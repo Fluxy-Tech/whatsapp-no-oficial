@@ -1,0 +1,20 @@
+node_modules/
+dist/
+build/
+.env
+.env.*.local
+*.log
+.DS_Store
+
+# backend
+backend/tokens/
+backend/node_modules/
+backend/dist/
+backend/prisma/*.db
+
+# frontend
+frontend/node_modules/
+frontend/dist/
+
+# docker
+postgres_data/

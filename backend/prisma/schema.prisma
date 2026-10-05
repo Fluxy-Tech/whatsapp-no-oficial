@@ -1,0 +1,235 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// better-auth core tables
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions    Session[]
+  accounts    Account[]
+  members     Member[]
+  invitations Invitation[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  activeOrganizationId String?
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id         String  @id @default(cuid())
+  accountId  String
+  providerId String
+  userId     String
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  accessToken           String?
+  refreshToken          String?
+  idToken                String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password               String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ---------------------------------------------------------------------------
+// better-auth "organization" plugin tables
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String?
+  logo      String?
+  metadata  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members          Member[]
+  invitations      Invitation[]
+  whatsappSessions WhatsappSession[]
+
+  @@unique([slug])
+  @@map("organization")
+}
+
+// Role is a free-form string managed by better-auth's organization plugin.
+// Default roles: "owner" | "admin" | "member".
+model Member {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String       @default("member")
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           String?
+  status         String       @default("pending")
+  expiresAt      DateTime
+  inviterId      String
+  inviter        User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("invitation")
+}
+
+// ---------------------------------------------------------------------------
+// Application tables (WhatsApp via wppconnect)
+// ---------------------------------------------------------------------------
+
+// One connected WhatsApp number per organization.
+model WhatsappSession {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sessionName    String   @unique
+  status         String   @default("DISCONNECTED") // DISCONNECTED | STARTING | QRCODE | CONNECTED | ERROR
+  qrCode         String?
+  phoneNumber    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  chats    Chat[]
+  contacts Contact[]
+  targets  Target[]
+
+  @@unique([organizationId])
+  @@map("whatsapp_session")
+}
+
+model Contact {
+  id                String          @id @default(cuid())
+  whatsappSessionId String
+  whatsappSession   WhatsappSession @relation(fields: [whatsappSessionId], references: [id], onDelete: Cascade)
+  contactId         String // wppconnect contact id, e.g. 5511999999999@c.us
+  name              String?
+  pushname          String?
+  formattedName     String?
+  isMyContact       Boolean         @default(false)
+  isBusiness        Boolean         @default(false)
+  isGroup           Boolean         @default(false)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([whatsappSessionId, contactId])
+  @@map("contact")
+}
+
+// Built incrementally from incoming messages (not from the full contact
+// sync): whoever messages the organization and isn't here yet gets added.
+model Target {
+  id                String          @id @default(cuid())
+  whatsappSessionId String
+  whatsappSession   WhatsappSession @relation(fields: [whatsappSessionId], references: [id], onDelete: Cascade)
+  targetId          String // wppconnect contact id, e.g. 5511999999999@c.us
+  name              String?
+  pushname          String?
+  isGroup           Boolean         @default(false)
+  firstMessageAt    DateTime        @default(now())
+  lastMessageAt     DateTime        @default(now())
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([whatsappSessionId, targetId])
+  @@map("target")
+}
+
+model Chat {
+  id                String          @id @default(cuid())
+  whatsappSessionId String
+  whatsappSession   WhatsappSession @relation(fields: [whatsappSessionId], references: [id], onDelete: Cascade)
+  chatId            String // wppconnect chat id, e.g. 5511999999999@c.us
+  name              String?
+  isGroup           Boolean         @default(false)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  messages Message[]
+
+  @@unique([whatsappSessionId, chatId])
+  @@map("chat")
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  chatId     String
+  chat       Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  wppId      String   @unique
+  from       String
+  to         String
+  body       String?
+  caption    String?
+  filename   String?
+  mimetype   String?
+  fromMe     Boolean  @default(false)
+  type       String   @default("chat")
+  timestamp  DateTime
+  rawPayload Json?
+  createdAt  DateTime @default(now())
+
+  @@index([chatId, timestamp])
+  @@map("message")
+}
