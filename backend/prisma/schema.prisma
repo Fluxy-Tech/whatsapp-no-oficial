@@ -24,10 +24,11 @@ model User {
   members     Member[]
   invitations Invitation[]
 
-  assignedLeadCards LeadCard[]       @relation("LeadCardAssignee")
-  leadComments      LeadComment[]
-  leadAttachments   LeadAttachment[]
-  calendarEvents    CalendarEvent[]  @relation("CalendarEventAssignee")
+  assignedLeadCards  LeadCard[]       @relation("LeadCardAssignee")
+  agentsLeadAssignee Agent[]          @relation("AgentLeadAssignee")
+  leadComments       LeadComment[]
+  leadAttachments    LeadAttachment[]
+  calendarEvents     CalendarEvent[]  @relation("CalendarEventAssignee")
 
   @@unique([email])
   @@map("user")
@@ -314,6 +315,10 @@ model Agent {
   // Where the lead goes once every metadado has been collected.
   completedStageId   String?
   completedStage     PipelineStage? @relation("AgentCompletedStage", fields: [completedStageId], references: [id], onDelete: SetNull)
+  // Who receives the lead cards the agent creates. null = automatic
+  // distribution (balanced among members with acceptsLeads).
+  leadAssigneeId     String?
+  leadAssignee       User?          @relation("AgentLeadAssignee", fields: [leadAssigneeId], references: [id], onDelete: SetNull)
 
   // Meeting scheduling (calendar). Times are local (APP_TIMEZONE), "HH:MM".
   schedulingEnabled      Boolean  @default(false)

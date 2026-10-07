@@ -4,6 +4,7 @@ import { TokenUsagePanel } from "@/components/agents/TokenUsagePanel";
 import { api } from "@/lib/api";
 import type { Agent, SecretInfo } from "@/lib/agents";
 import { stageOptions as toStageOptions, type Pipeline } from "@/lib/dashboard";
+import type { Member } from "@/lib/organization";
 import { TabsNav, type TabItem } from "@/components/ui/tabs-nav";
 import {
   KanbanAutomationCard,
@@ -66,6 +67,7 @@ function toForm(agent: Agent | null): Form {
       leadOnFirstMessage: agent?.leadOnFirstMessage ?? false,
       leadStageId: agent?.leadStageId ?? "",
       completedStageId: agent?.completedStageId ?? "",
+      leadAssigneeId: agent?.leadAssigneeId ?? "",
     },
     scheduling: {
       enabled: agent?.scheduling.enabled ?? false,
@@ -155,12 +157,14 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
   const [tab, setTab] = useState<Tab>("perfil");
   const [stageOptions, setStageOptions] = useState<StageOption[]>([]);
   const [stagesError, setStagesError] = useState<string | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
 
   // Kanban columns for the automation selects.
   useEffect(() => {
     api<Pipeline[]>("/api/dashboard/kanban/pipelines")
       .then((pipelines) => setStageOptions(toStageOptions(pipelines)))
       .catch((err) => setStagesError(`Não foi possível carregar as esteiras: ${(err as Error).message}`));
+    api<Member[]>("/api/organizations/current/members").then(setMembers).catch(() => {});
   }, []);
 
   // Reset the form when switching agents (not on every document status update).
@@ -192,6 +196,7 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
         leadOnFirstMessage: form.kanban.leadOnFirstMessage,
         leadStageId: form.kanban.leadStageId || null,
         completedStageId: form.kanban.completedStageId || null,
+        leadAssigneeId: form.kanban.leadAssigneeId || null,
         scheduling: {
           enabled: form.scheduling.enabled,
           meetingDurationMinutes: Number(form.scheduling.meetingDurationMinutes),
@@ -421,6 +426,7 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
                 onChange={(kanban) => setForm({ ...form, kanban })}
                 stageOptions={stageOptions}
                 stagesError={stagesError}
+                members={members}
                 disabled={disabled}
               />
 

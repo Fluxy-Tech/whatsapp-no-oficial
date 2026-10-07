@@ -44,6 +44,8 @@ export type Agent = {
   leadStageId: string | null;
   /** Kanban: column the lead goes to once every metadado is collected. */
   completedStageId: string | null;
+  /** Kanban: member who receives the cards the agent creates; null = automatic distribution. */
+  leadAssigneeId: string | null;
   scheduling: AgentScheduling;
   documentsStatus: Record<string, DocumentStatus | null>;
   metadados: Metadado[];

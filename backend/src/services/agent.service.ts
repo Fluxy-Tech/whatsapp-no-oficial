@@ -58,6 +58,8 @@ export type AgentInput = {
   leadStageId?: string | null;
   /** Kanban: stage the lead moves to once every metadado is collected. */
   completedStageId?: string | null;
+  /** Kanban: member who receives the cards the agent creates; null = automatic distribution. */
+  leadAssigneeId?: string | null;
   scheduling?: SchedulingInput;
 };
 
@@ -110,6 +112,7 @@ export function agentView(agent: AgentWithMetadados, activeAgentId: string | nul
     leadOnFirstMessage: agent.leadOnFirstMessage,
     leadStageId: agent.leadStageId,
     completedStageId: agent.completedStageId,
+    leadAssigneeId: agent.leadAssigneeId,
     scheduling: {
       enabled: agent.schedulingEnabled,
       meetingDurationMinutes: agent.meetingDurationMinutes,
@@ -225,6 +228,12 @@ async function validateStageIds(organizationId: string, ids: (string | null | un
   if (found !== wanted.length) throw new AgentError(400, "Coluna do kanban inválida");
 }
 
+async function validateLeadAssignee(organizationId: string, userId: string | null | undefined) {
+  if (!userId) return;
+  const member = await prisma.member.findFirst({ where: { organizationId, userId } });
+  if (!member) throw new AgentError(400, "Responsável pelos leads não é membro da empresa");
+}
+
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function optionalLimit(value: unknown, label: string) {
@@ -301,6 +310,7 @@ export async function createAgent(organizationId: string, input: AgentInput) {
     input.completedStageId,
     ...metadados.map((m) => m.stageId),
   ]);
+  await validateLeadAssignee(organizationId, input.leadAssigneeId);
 
   const agent = await prisma.agent.create({
     data: {
@@ -317,6 +327,7 @@ export async function createAgent(organizationId: string, input: AgentInput) {
       leadOnFirstMessage: input.leadOnFirstMessage ?? false,
       leadStageId: input.leadStageId ?? null,
       completedStageId: input.completedStageId ?? null,
+      leadAssigneeId: input.leadAssigneeId ?? null,
       ...schedulingData(input.scheduling),
       metadados: {
         create: metadados.map(({ name, descricao, stageId }) => ({ name, descricao, stageId })),
@@ -362,6 +373,10 @@ export async function updateAgent(organizationId: string, agentId: string, input
   }
   if (input.completedStageId !== undefined) {
     data.completedStage = input.completedStageId ? { connect: { id: input.completedStageId } } : { disconnect: true };
+  }
+  if (input.leadAssigneeId !== undefined) {
+    await validateLeadAssignee(organizationId, input.leadAssigneeId);
+    data.leadAssignee = input.leadAssigneeId ? { connect: { id: input.leadAssigneeId } } : { disconnect: true };
   }
   Object.assign(data, schedulingData(input.scheduling));
   const tokenOpenAi = await tokenUpdate("openai", input.tokenOpenAi);

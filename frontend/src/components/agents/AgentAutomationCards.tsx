@@ -1,4 +1,5 @@
 import type { StageOption } from "@/components/agents/MetadadosEditor";
+import type { Member } from "@/lib/organization";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +11,8 @@ export type KanbanDraft = {
   leadOnFirstMessage: boolean;
   leadStageId: string;
   completedStageId: string;
+  /** "" = automatic distribution. */
+  leadAssigneeId: string;
 };
 
 type KanbanAutomationCardProps = {
@@ -18,6 +21,7 @@ type KanbanAutomationCardProps = {
   stageOptions: StageOption[];
   /** null = loaded; string = why the pipelines couldn't be loaded. */
   stagesError: string | null;
+  members: Member[];
   disabled: boolean;
 };
 
@@ -47,8 +51,20 @@ function StageSelect({
   );
 }
 
-export function KanbanAutomationCard({ value, onChange, stageOptions, stagesError, disabled }: KanbanAutomationCardProps) {
+export function KanbanAutomationCard({
+  value,
+  onChange,
+  stageOptions,
+  stagesError,
+  members,
+  disabled,
+}: KanbanAutomationCardProps) {
   const noStages = !stageOptions.length;
+  const receivers = members.filter((member) => member.acceptsLeads);
+  const assigneeOptions = [
+    { value: "", label: "Distribuição automática" },
+    ...members.map((member) => ({ value: member.userId, label: member.name })),
+  ];
   return (
     <Card>
       <CardHeader>
@@ -104,6 +120,33 @@ export function KanbanAutomationCard({ value, onChange, stageOptions, stagesErro
             disabled={disabled || noStages}
             empty="Não mover"
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="agent-lead-assignee">Responsável pelos leads</Label>
+          <OptionsSelect
+            id="agent-lead-assignee"
+            value={value.leadAssigneeId}
+            onValueChange={(leadAssigneeId) => onChange({ ...value, leadAssigneeId })}
+            disabled={disabled}
+            options={assigneeOptions}
+          />
+          {value.leadAssigneeId ? (
+            <p className="text-xs text-muted-foreground">
+              Todos os leads criados pelo agente vão para este usuário, sem limite de cards.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Cada novo lead vai para quem tem menos cards, mantendo o mesmo número entre os usuários que recebem leads
+              {receivers.length ? ` (${receivers.map((member) => member.name).join(", ")})` : ""}. Quem recebe leads é
+              definido em Configurações › Membros.
+            </p>
+          )}
+          {!value.leadAssigneeId && members.length > 0 && !receivers.length && (
+            <p className="text-xs text-destructive">
+              Nenhum usuário recebe leads ainda: os cards ficarão sem responsável.
+            </p>
+          )}
         </div>
       </CardContent>
     </Card>

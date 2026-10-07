@@ -247,7 +247,10 @@ export async function listCards(organizationId: string, pipelineId: string) {
   return cards.map(cardView);
 }
 
-/** Member that receives the next lead: among those accepting leads, the one with fewest cards. */
+/**
+ * Automatic distribution: among the members accepting leads, the one with the
+ * fewest cards, so the counts stay even (ties go to the oldest member).
+ */
 export async function pickLeadAssignee(organizationId: string) {
   const members = await prisma.member.findMany({
     where: { organizationId, acceptsLeads: true },
@@ -399,11 +402,26 @@ async function organizationAgent(organizationId: string) {
   return organization?.agent ?? null;
 }
 
+/**
+ * Who receives a card the agent creates: the member chosen in the agent (no
+ * limit of cards) or, when none is chosen or they left the company, the
+ * automatic distribution. Existing cards keep their assignee.
+ */
+async function agentLeadAssignee(organizationId: string, agent: { leadAssigneeId: string | null }, targetId: string) {
+  if (await prisma.leadCard.findUnique({ where: { targetId }, select: { id: true } })) return undefined;
+  if (agent.leadAssigneeId) {
+    const member = await prisma.member.findFirst({ where: { organizationId, userId: agent.leadAssigneeId } });
+    if (member) return agent.leadAssigneeId;
+  }
+  return pickLeadAssignee(organizationId);
+}
+
 /** First message of a contact: creates the lead when the agent is set to. */
 export async function onLeadMessage(organizationId: string, targetId: string) {
   const agent = await organizationAgent(organizationId);
   if (!agent?.active || !agent.leadOnFirstMessage || !agent.leadStageId) return;
-  await upsertLeadCard(organizationId, targetId, agent.leadStageId, { onlyIfMissing: true });
+  const assigneeId = await agentLeadAssignee(organizationId, agent, targetId);
+  await upsertLeadCard(organizationId, targetId, agent.leadStageId, { onlyIfMissing: true, assigneeId });
 }
 
 const filled = (value: unknown) => Boolean(String(value ?? "").trim());
@@ -431,5 +449,6 @@ export async function onMetadataCollected(
 
   const card = await prisma.leadCard.findUnique({ where: { targetId } });
   if (card?.stageId === stageId) return;
-  await upsertLeadCard(organizationId, targetId, stageId);
+  const assigneeId = await agentLeadAssignee(organizationId, agent, targetId);
+  await upsertLeadCard(organizationId, targetId, stageId, { assigneeId });
 }
