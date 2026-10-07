@@ -76,6 +76,8 @@ services:
   frontend:
     build:
       context: ./frontend
+      # Desenvolvimento com hot reload; em produção o Dockerfile termina no nginx.
+      target: dev
     container_name: sturnus-frontend
     restart: unless-stopped
     env_file:

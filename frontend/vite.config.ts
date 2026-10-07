@@ -18,6 +18,8 @@ export default defineConfig(({ mode }) => {
       port: Number(env.PORT) || 6803,
       strictPort: true,
       host: true,
+      // Domínios públicos aceitos pelo servidor (ex.: o do Easypanel), separados por vírgula.
+      allowedHosts: env.ALLOWED_HOSTS ? env.ALLOWED_HOSTS.split(",").map((host) => host.trim()) : [],
     },
   };
 });
