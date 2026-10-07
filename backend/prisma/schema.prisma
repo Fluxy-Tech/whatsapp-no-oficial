@@ -24,6 +24,11 @@ model User {
   members     Member[]
   invitations Invitation[]
 
+  assignedLeadCards LeadCard[]       @relation("LeadCardAssignee")
+  leadComments      LeadComment[]
+  leadAttachments   LeadAttachment[]
+  calendarEvents    CalendarEvent[]  @relation("CalendarEventAssignee")
+
   @@unique([email])
   @@map("user")
 }
@@ -48,19 +53,19 @@ model Session {
 }
 
 model Account {
-  id         String  @id @default(cuid())
+  id         String @id @default(cuid())
   accountId  String
   providerId String
   userId     String
-  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   accessToken           String?
   refreshToken          String?
-  idToken                String?
+  idToken               String?
   accessTokenExpiresAt  DateTime?
   refreshTokenExpiresAt DateTime?
   scope                 String?
-  password               String?
+  password              String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -97,20 +102,39 @@ model Organization {
   members          Member[]
   invitations      Invitation[]
   whatsappSessions WhatsappSession[]
+  targets          Target[]
+  agents           Agent[]           @relation("OrganizationAgents")
+
+  // Agent that answers this organization's WhatsApp contacts. It only
+  // replies while it is active and has a context (prompt).
+  agentId String? @unique
+  agent   Agent?  @relation("OrganizationActiveAgent", fields: [agentId], references: [id], onDelete: SetNull)
+
+  rolePermissions OrganizationRolePermission[]
+  pipelines       Pipeline[]
+  leadCards       LeadCard[]
+  calendarEvents  CalendarEvent[]
+  tokenUsages     AgentTokenUsage[]
+  leadComments    LeadComment[]
+  leadAttachments LeadAttachment[]
 
   @@unique([slug])
   @@map("organization")
 }
 
-// Role is a free-form string managed by better-auth's organization plugin.
-// Default roles: "owner" | "admin" | "member".
+// Roles (src/lib/roles.ts): "admin" (only the platform admin e-mail),
+// "gerente", "supervisor" and "atendente".
 model Member {
   id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userId         String
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role           String       @default("member")
+  role           String       @default("atendente")
+  // Can receive meetings scheduled in the calendar (by the AI agent or by hand).
+  acceptsEvents  Boolean      @default(false)
+  // Takes part in the distribution of new leads in the kanban.
+  acceptsLeads   Boolean      @default(false)
   createdAt      DateTime     @default(now())
 
   @@unique([organizationId, userId])
@@ -129,6 +153,8 @@ model Invitation {
   expiresAt      DateTime
   inviterId      String
   inviter        User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  // Short code the invited person types after logging in to join.
+  code           String?      @unique
   createdAt      DateTime     @default(now())
 
   @@index([organizationId])
@@ -142,19 +168,19 @@ model Invitation {
 
 // One connected WhatsApp number per organization.
 model WhatsappSession {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  sessionName    String   @unique
-  status         String   @default("DISCONNECTED") // DISCONNECTED | STARTING | QRCODE | CONNECTED | ERROR
+  sessionName    String       @unique
+  status         String       @default("DISCONNECTED") // DISCONNECTED | STARTING | QRCODE | CONNECTED | ERROR
   qrCode         String?
   phoneNumber    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  lastError      String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   chats    Chat[]
   contacts Contact[]
-  targets  Target[]
 
   @@unique([organizationId])
   @@map("whatsapp_session")
@@ -180,20 +206,36 @@ model Contact {
 
 // Built incrementally from incoming messages (not from the full contact
 // sync): whoever messages the organization and isn't here yet gets added.
+// Everyone the organization talks to on WhatsApp (1:1 chats only). Written
+// by the backend from worker-whatsapp webhooks; the messages themselves live
+// in worker-whatsapp's MongoDB.
 model Target {
-  id                String          @id @default(cuid())
-  whatsappSessionId String
-  whatsappSession   WhatsappSession @relation(fields: [whatsappSessionId], references: [id], onDelete: Cascade)
-  targetId          String // wppconnect contact id, e.g. 5511999999999@c.us
-  name              String?
-  pushname          String?
-  isGroup           Boolean         @default(false)
-  firstMessageAt    DateTime        @default(now())
-  lastMessageAt     DateTime        @default(now())
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  chatId         String // WhatsApp id, e.g. 5511999999999@c.us
+  number         String? // 5511999999999 (null when WhatsApp only exposes the @lid)
+  name           String?
+  pushname       String?
+  lastSeen       DateTime?
+  isOnline       Boolean      @default(false)
+  // false = the AI agent does not answer this contact.
+  agentActive    Boolean      @default(true)
+  // Metadata collected by the agent: { [metadado name]: value }.
+  extras         Json         @default("{}")
+  firstMessageAt DateTime?
+  lastMessageAt  DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
-  @@unique([whatsappSessionId, targetId])
+  leadCard       LeadCard?
+  calendarEvents CalendarEvent[]
+  tokenUsages    AgentTokenUsage[]
+  comments       LeadComment[]
+  attachments    LeadAttachment[]
+
+  @@unique([organizationId, chatId])
+  @@index([organizationId, lastMessageAt])
   @@map("target")
 }
 
@@ -232,4 +274,266 @@ model Message {
 
   @@index([chatId, timestamp])
   @@map("message")
+}
+
+// ---------------------------------------------------------------------------
+// AI agents (answered by AI-Worker, Google ADK)
+// ---------------------------------------------------------------------------
+
+model Agent {
+  id                      String       @id @default(cuid())
+  organizationId          String
+  organization            Organization @relation("OrganizationAgents", fields: [organizationId], references: [id], onDelete: Cascade)
+  name                    String
+  active                  Boolean      @default(true)
+  // Prompt the agent must follow.
+  context                 String       @default("")
+  // API keys, encrypted at rest (AES-256-GCM, see src/lib/crypto.ts).
+  tokenOpenAi             String?
+  tokenAdk                String?
+  // RAG source files (S3 or public links), chunked into pgvector by AI-Worker.
+  documents               String[]     @default([])
+  // Ingestion state per document url: { [url]: { status, chunks?, error?, updatedAt } }
+  documentsStatus         Json         @default("{}")
+  // Messages that reset the conversation with the agent (history + extras)
+  // when sent alone by the contact. Compared ignoring case/accents/punctuation.
+  resetKeywords           String[]     @default([])
+  // Sent to the contact when a reset keyword ends the conversation.
+  resetMessage            String       @default("Prontinho! Encerrei nossa conversa e apaguei os dados que eu tinha guardado sobre você. Quando quiser, é só mandar uma mensagem para começarmos de novo.")
+  // When every metadado of a contact has been collected, the agent writes a
+  // message following descriptionNotification and sends it to this number
+  // (digits only, e.g. 5511999999999). null = no notification.
+  numberPhoneNotification String?
+  descriptionNotification String       @default("Envie um relatório curto da conversa com o contato e liste todos os metadados coletados.")
+
+  // Kanban automation. A stage implies its pipeline (esteira).
+  // leadOnFirstMessage: creates the lead card in leadStage on the contact's first message.
+  leadOnFirstMessage Boolean        @default(false)
+  leadStageId        String?
+  leadStage          PipelineStage? @relation("AgentLeadStage", fields: [leadStageId], references: [id], onDelete: SetNull)
+  // Where the lead goes once every metadado has been collected.
+  completedStageId   String?
+  completedStage     PipelineStage? @relation("AgentCompletedStage", fields: [completedStageId], references: [id], onDelete: SetNull)
+
+  // Meeting scheduling (calendar). Times are local (APP_TIMEZONE), "HH:MM".
+  schedulingEnabled      Boolean  @default(false)
+  meetingDurationMinutes Int      @default(60)
+  schedulingStartTime    String   @default("09:00")
+  schedulingEndTime      String   @default("18:00")
+  // 0 = Sunday ... 6 = Saturday.
+  schedulingWeekdays     Int[]    @default([1, 2, 3, 4, 5])
+  // null = no limit.
+  maxEventsPerDay        Int?
+  maxEventsPerSlot       Int?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  metadados            Metadado[]
+  activeInOrganization Organization?     @relation("OrganizationActiveAgent")
+  tokenUsages          AgentTokenUsage[]
+
+  @@index([organizationId])
+  @@map("agent")
+}
+
+// A piece of information the agent must collect from the contact. Collected
+// values are stored per contact (worker-whatsapp contact.extras[name]).
+model Metadado {
+  id        String         @id @default(cuid())
+  agentId   String
+  agent     Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  name      String
+  descricao String         @default("")
+  // When this metadado is collected the lead moves to this stage.
+  stageId   String?
+  stage     PipelineStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([agentId, name])
+  @@map("metadado")
+}
+
+// ---------------------------------------------------------------------------
+// Access control
+// ---------------------------------------------------------------------------
+
+// What "supervisor" and "atendente" can do in each module, set by the gerente:
+// { [module]: "none" | "view" | "edit" } (see src/lib/roles.ts). admin and
+// gerente always have full access.
+model OrganizationRolePermission {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           String
+  permissions    Json         @default("{}")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, role])
+  @@map("organization_role_permission")
+}
+
+// ---------------------------------------------------------------------------
+// Kanban: pipelines (esteiras) -> stages (colunas) -> lead cards
+// ---------------------------------------------------------------------------
+
+model Pipeline {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  position       Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  stages PipelineStage[]
+  cards  LeadCard[]
+
+  @@index([organizationId, position])
+  @@map("pipeline")
+}
+
+model PipelineStage {
+  id         String   @id @default(cuid())
+  pipelineId String
+  pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  name       String
+  color      String   @default("#171717")
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  cards           LeadCard[]
+  metadados       Metadado[]
+  agentsLead      Agent[]    @relation("AgentLeadStage")
+  agentsCompleted Agent[]    @relation("AgentCompletedStage")
+
+  @@index([pipelineId, position])
+  @@map("pipeline_stage")
+}
+
+// A lead (target) sits in exactly one pipeline/stage at a time.
+model LeadCard {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  targetId       String        @unique
+  target         Target        @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  pipelineId     String
+  pipeline       Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stageId        String
+  stage          PipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  position       Int           @default(0)
+  // Where the lead came from ("WhatsApp", "Instagram", "Site", ... free text).
+  source         String        @default("WhatsApp")
+  // Member (user) responsible for the lead.
+  assigneeId     String?
+  assignee       User?         @relation("LeadCardAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([organizationId])
+  @@index([stageId, position])
+  @@map("lead_card")
+}
+
+// ---------------------------------------------------------------------------
+// Calendar
+// ---------------------------------------------------------------------------
+
+model CalendarEvent {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title          String
+  description    String       @default("")
+  startsAt       DateTime
+  endsAt         DateTime
+  // Member (user) who attends the meeting.
+  assigneeId     String?
+  assignee       User?        @relation("CalendarEventAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  targetId       String?
+  target         Target?      @relation(fields: [targetId], references: [id], onDelete: SetNull)
+  // "manual" (created on the screen) | "ai" (booked by the AI agent).
+  source         String       @default("manual")
+  // "scheduled" | "canceled". Canceled events free the slot.
+  status         String       @default("scheduled")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, startsAt])
+  @@index([assigneeId, startsAt])
+  @@map("calendar_event")
+}
+
+// ---------------------------------------------------------------------------
+// AI token usage
+// ---------------------------------------------------------------------------
+
+// One row per model call made by an agent (reported by AI-Worker): answers
+// (Gemini/ADK), the collection notification, RAG searches and RAG document
+// ingestion (OpenAI embeddings).
+model AgentTokenUsage {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agentId        String
+  agent          Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  // Lead the call was made for (null for document ingestion).
+  targetId       String?
+  target         Target?      @relation(fields: [targetId], references: [id], onDelete: SetNull)
+  // "reply" | "notification" | "rag_query" | "rag_ingest"
+  kind           String
+  // "google" | "openai"
+  provider       String
+  model          String
+  inputTokens    Int          @default(0)
+  outputTokens   Int          @default(0)
+  totalTokens    Int
+  createdAt      DateTime     @default(now())
+
+  @@index([agentId, createdAt])
+  @@index([organizationId, createdAt])
+  @@map("agent_token_usage")
+}
+
+// ---------------------------------------------------------------------------
+// Lead notes: comments and attached files (shown on the board card's drawer).
+// They belong to the lead, so they survive the card being removed or moved.
+// ---------------------------------------------------------------------------
+
+model LeadComment {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  targetId       String
+  target         Target       @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  authorId       String?
+  author         User?        @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  body           String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([targetId, createdAt])
+  @@map("lead_comment")
+}
+
+model LeadAttachment {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  targetId       String
+  target         Target       @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  uploadedById   String?
+  uploadedBy     User?        @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  fileName       String
+  mimeType       String
+  size           Int
+  // Object key in the S3 bucket (SeaweedFS).
+  storageKey     String
+  createdAt      DateTime     @default(now())
+
+  @@index([targetId, createdAt])
+  @@map("lead_attachment")
 }

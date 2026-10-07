@@ -5,7 +5,7 @@
   --color-foreground: hsl(222.2 84% 4.9%);
   --color-card: hsl(0 0% 100%);
   --color-card-foreground: hsl(222.2 84% 4.9%);
-  --color-primary: hsl(142 71% 29%);
+  --color-primary: oklch(20.5% 0 0); /* neutral-900: black and white theme */
   --color-primary-foreground: hsl(0 0% 100%);
   --color-secondary: hsl(210 40% 96.1%);
   --color-secondary-foreground: hsl(222.2 47.4% 11.2%);
@@ -17,7 +17,7 @@
   --color-destructive-foreground: hsl(210 40% 98%);
   --color-border: hsl(214.3 31.8% 91.4%);
   --color-input: hsl(214.3 31.8% 91.4%);
-  --color-ring: hsl(142 71% 29%);
+  --color-ring: oklch(20.5% 0 0); /* neutral-900 */
 
   --radius-lg: 0.5rem;
   --radius-md: calc(0.5rem - 2px);
@@ -32,5 +32,18 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+  }
+
+  /* Tailwind v4 resets buttons to cursor: default. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  select:not(:disabled),
+  input[type="color"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  select:disabled {
+    cursor: not-allowed;
   }
 }

@@ -1,0 +1,221 @@
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { OptionsSelect } from "@/components/ui/options-select";
+import { Spinner } from "@/components/ui/spinner";
+import { ColumnChart } from "@/components/charts/ColumnChart";
+
+type Period = "year" | "month" | "day";
+type Kind = "reply" | "notification" | "rag_query" | "rag_ingest";
+
+type TokenUsage = {
+  period: Period;
+  year: number;
+  month: number;
+  day: number;
+  unit: "month" | "day" | "hour";
+  buckets: { bucket: number; tokens: number }[];
+  total: number;
+  calls: number;
+  byKind: Record<Kind, number>;
+};
+
+const PERIOD_LABELS: Record<Period, string> = { year: "Ano", month: "Mês", day: "Dia" };
+const KIND_LABELS: Record<Kind, { label: string; description: string }> = {
+  reply: { label: "Respostas", description: "Conversas do agente com os leads (Gemini)" },
+  notification: { label: "Notificações", description: "Mensagem de coleta concluída (Gemini)" },
+  rag_query: { label: "Busca nos documentos", description: "Consultas à base de conhecimento (OpenAI)" },
+  rag_ingest: { label: "Leitura de documentos", description: "Indexação dos documentos do RAG (OpenAI)" },
+};
+const MONTHS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+const MONTH_NAMES = [
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
+];
+const NUMBER = new Intl.NumberFormat("pt-BR");
+const COMPACT = new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
+const pad = (value: number) => String(value).padStart(2, "0");
+
+/** Tokens spent by the agent per year (months), month (days) or day (hours). */
+export function TokenUsagePanel({ agentId }: { agentId: string }) {
+  const today = new Date();
+  const [period, setPeriod] = useState<Period>("year");
+  const [year, setYear] = useState(today.getFullYear());
+  const [month, setMonth] = useState(today.getMonth() + 1);
+  const [day, setDay] = useState(today.getDate());
+  const [usage, setUsage] = useState<TokenUsage | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    const query = new URLSearchParams({ period, year: String(year), month: String(month), day: String(day) });
+    api<TokenUsage>(`/api/agents/${agentId}/token-usage?${query}`)
+      .then((data) => {
+        if (!cancelled) {
+          setUsage(data);
+          setError(null);
+        }
+      })
+      .catch((err) => !cancelled && setError((err as Error).message))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId, period, year, month, day]);
+
+  const years = Array.from({ length: 5 }, (_, index) => today.getFullYear() - index);
+
+  const chartData =
+    usage?.buckets.map(({ bucket, tokens }) => {
+      if (usage.unit === "month") {
+        return { label: MONTHS[bucket - 1], fullLabel: `${MONTH_NAMES[bucket - 1]} de ${usage.year}`, value: tokens };
+      }
+      if (usage.unit === "day") {
+        return { label: String(bucket), fullLabel: `${pad(bucket)}/${pad(usage.month)}/${usage.year}`, value: tokens };
+      }
+      return { label: `${pad(bucket)}h`, fullLabel: `${pad(bucket)}:00 – ${pad(bucket)}:59`, value: tokens };
+    }) ?? [];
+
+  const periodLabel =
+    period === "year"
+      ? String(year)
+      : period === "month"
+        ? `${MONTH_NAMES[month - 1]} de ${year}`
+        : `${pad(day)}/${pad(month)}/${year}`;
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="flex flex-row flex-wrap items-end justify-between gap-4 space-y-0">
+          <div>
+            <CardTitle>Consumo de tokens</CardTitle>
+            <CardDescription>Tokens gastos por este agente em {periodLabel}.</CardDescription>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex rounded-lg border bg-muted/50 p-1" role="tablist" aria-label="Período">
+              {(Object.keys(PERIOD_LABELS) as Period[]).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  role="tab"
+                  aria-selected={period === option}
+                  onClick={() => setPeriod(option)}
+                  className={cn(
+                    "rounded-md px-3 py-1 text-sm font-medium transition-colors",
+                    period === option ? "bg-background text-primary shadow-xs" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {PERIOD_LABELS[option]}
+                </button>
+              ))}
+            </div>
+            {period === "day" ? (
+              <Input
+                type="date"
+                value={`${year}-${pad(month)}-${pad(day)}`}
+                onChange={(e) => {
+                  const [y, m, d] = e.target.value.split("-").map(Number);
+                  if (y && m && d) {
+                    setYear(y);
+                    setMonth(m);
+                    setDay(d);
+                  }
+                }}
+                className="h-10 w-40"
+                aria-label="Dia"
+              />
+            ) : (
+              <>
+                {period === "month" && (
+                  <OptionsSelect
+                    value={String(month)}
+                    onValueChange={(value) => setMonth(Number(value))}
+                    options={MONTH_NAMES.map((name, index) => ({ value: String(index + 1), label: name }))}
+                    className="w-36"
+                    aria-label="Mês"
+                  />
+                )}
+                <OptionsSelect
+                  value={String(year)}
+                  onValueChange={(value) => setYear(Number(value))}
+                  options={years.map((option) => ({ value: String(option), label: String(option) }))}
+                  className="w-28"
+                  aria-label="Ano"
+                />
+              </>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          {loading && !usage ? (
+            <div className="flex justify-center py-10">
+              <Spinner className="size-6 text-muted-foreground" />
+            </div>
+          ) : usage ? (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-lg border p-4">
+                  <p className="text-sm text-muted-foreground">Total de tokens</p>
+                  <p className="mt-1 text-3xl font-semibold" title={NUMBER.format(usage.total)}>
+                    {COMPACT.format(usage.total)}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-4">
+                  <p className="text-sm text-muted-foreground">Chamadas aos modelos</p>
+                  <p className="mt-1 text-3xl font-semibold">{NUMBER.format(usage.calls)}</p>
+                </div>
+              </div>
+
+              <ColumnChart
+                caption={`Tokens por ${usage.unit === "month" ? "mês" : usage.unit === "day" ? "dia" : "hora"} em ${periodLabel}`}
+                data={chartData}
+                formatValue={(value) => `${NUMBER.format(value)} tokens`}
+              />
+
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">Uso</th>
+                      <th className="px-4 py-2 text-right font-medium">Tokens</th>
+                      <th className="px-4 py-2 text-right font-medium">% do total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {(Object.keys(KIND_LABELS) as Kind[]).map((kind) => (
+                      <tr key={kind}>
+                        <td className="px-4 py-2">
+                          <p className="font-medium">{KIND_LABELS[kind].label}</p>
+                          <p className="text-xs text-muted-foreground">{KIND_LABELS[kind].description}</p>
+                        </td>
+                        <td className="px-4 py-2 text-right tabular-nums">{NUMBER.format(usage.byKind[kind] ?? 0)}</td>
+                        <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
+                          {usage.total ? `${Math.round(((usage.byKind[kind] ?? 0) / usage.total) * 100)}%` : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : null}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

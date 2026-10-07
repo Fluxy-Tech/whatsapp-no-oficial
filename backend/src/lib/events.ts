@@ -1,8 +1,11 @@
 import { EventEmitter } from "events";
+import type { TargetView } from "../services/target.service";
+import type { WorkerMessage } from "./worker-client";
 
 export type WhatsappStatusEvent = {
   organizationId: string;
   status: string;
+  phoneNumber?: string | null;
 };
 
 export type WhatsappQrEvent = {
@@ -13,18 +16,43 @@ export type WhatsappQrEvent = {
 export type WhatsappMessageEvent = {
   organizationId: string;
   chatId: string;
+  message: WorkerMessage;
+  contact: TargetView;
 };
 
-export type WhatsappContactsSyncedEvent = {
+export type WhatsappMessageAckEvent = {
   organizationId: string;
-  count: number;
+  chatId: string;
+  messageId: string;
+  externalId: string | null;
+  status: string;
 };
 
-export type WhatsappTargetAddedEvent = {
+export type WhatsappMessageFailedEvent = {
   organizationId: string;
-  targetId: string;
+  externalId: string | null;
+  to: string | null;
+  error: string;
 };
 
-// Decouples the wppconnect service from the socket.io layer: the service
+export type WhatsappContactUpdatedEvent = {
+  organizationId: string;
+  contact: TargetView;
+};
+
+export type AgentDocumentStatusEvent = {
+  organizationId: string;
+  agentId: string;
+  url: string;
+  status: string;
+  chunks?: number;
+  error?: string | null;
+  updatedAt: string;
+};
+
+/** Kanban / calendar changed: the dashboard reloads. */
+export type OrganizationEvent = { organizationId: string };
+
+// Decouples the worker webhook from the socket.io layer: routes/webhooks.ts
 // emits here, sockets/index.ts subscribes and forwards to the right room.
 export const whatsappEvents = new EventEmitter();

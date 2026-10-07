@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuthLayout } from "@/layouts/AuthLayout";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -27,15 +28,16 @@ export function LoginPage() {
       return;
     }
 
-    navigate("/dashboard");
+    // Every login starts by choosing which company to enter.
+    navigate("/organizacoes");
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
+    <AuthLayout>
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Entrar</CardTitle>
-          <CardDescription>Acesse sua conta do Sturnus Flows</CardDescription>
+          <CardDescription>Acesse sua conta do GetLeads</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>
@@ -72,6 +74,6 @@ export function LoginPage() {
           </p>
         </CardContent>
       </Card>
-    </div>
+    </AuthLayout>
   );
 }

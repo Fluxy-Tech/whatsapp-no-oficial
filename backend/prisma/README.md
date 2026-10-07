@@ -89,47 +89,68 @@ Convite pendente para alguém entrar numa organização.
 
 ## Tabelas da aplicação (WhatsApp)
 
+O backend é dono dos **contatos** e do **status da conexão**, gravados a partir dos webhooks do `worker-whatsapp`. As **mensagens** ficam no MongoDB do worker (ver [`worker-whatsapp/README.md`](../../worker-whatsapp/README.md)).
+
 ### `WhatsappSession` (`whatsapp_session`)
-Estado da conexão com o WhatsApp de uma organização (1:1 com `Organization`).
+Estado da conexão com o WhatsApp de uma organização (1:1 com `Organization`). Atualizado pelos webhooks `session.status` / `session.qrcode`; o worker consulta as sessões não `DISCONNECTED` para reabrir ao reiniciar.
 
 | Campo | Tipo | Observação |
 |---|---|---|
-| `organizationId` | String | FK → `Organization`, único (uma sessão por org), cascade on delete |
-| `sessionName` | String | único, nome interno da sessão no wppconnect (`org_<organizationId>`) |
+| `organizationId` | String | FK → `Organization`, único, cascade on delete |
+| `sessionName` | String | único, nome da sessão no wppconnect (`org_<organizationId>`) |
 | `status` | String | `"DISCONNECTED"` \| `"STARTING"` \| `"QRCODE"` \| `"CONNECTED"` \| `"ERROR"` |
-| `qrCode` | String? | QR code atual em base64 (data URL), preenchido só enquanto `status = "QRCODE"` |
-| `phoneNumber` | String? | número conectado, preenchido quando `status = "CONNECTED"` |
+| `qrCode` | String? | QR code atual (data URL), só enquanto `status = "QRCODE"` |
+| `phoneNumber` | String? | número conectado |
+| `lastError` | String? | último erro ao conectar |
 
-### `Chat` (`chat`)
-Uma conversa (contato ou grupo) dentro de uma `WhatsappSession`.
-
-| Campo | Tipo | Observação |
-|---|---|---|
-| `whatsappSessionId` | String | FK → `WhatsappSession`, cascade on delete |
-| `chatId` | String | ID do WhatsApp, ex. `5511999999999@c.us` ou `...@g.us` para grupo |
-| `name` | String? | nome do contato/grupo |
-| `isGroup` | Boolean | default `false` |
-
-Único por `(whatsappSessionId, chatId)`.
-
-### `Message` (`message`)
-Uma mensagem enviada ou recebida.
+### `Target` (`target`)
+Todo contato 1:1 que conversou com a organização. Criado/atualizado a cada `message.received` / `message.sent`; `contact.updated` (presença) só atualiza os que já existem.
 
 | Campo | Tipo | Observação |
 |---|---|---|
-| `chatId` | String | FK → `Chat`, cascade on delete |
-| `wppId` | String | único, ID da mensagem no WhatsApp (evita duplicar ao reprocessar) |
-| `from` / `to` | String | IDs do WhatsApp (ou `"me"` para mensagens enviadas pela própria organização) |
-| `body` | String? | texto da mensagem |
-| `fromMe` | Boolean | `true` se enviada pela organização |
-| `type` | String | tipo wppconnect (`"chat"`, `"image"`, `"ptt"`, ...) |
-| `timestamp` | DateTime | hora real da mensagem no WhatsApp |
-| `rawPayload` | Json? | payload original do wppconnect, guardado para depuração/reprocessamento |
+| `organizationId` | String | FK → `Organization`, cascade on delete |
+| `chatId` | String | id do WhatsApp (`5511999999999@c.us`); único por organização |
+| `number` | String? | número sem `+`; `null` quando o WhatsApp só expõe o `@lid` |
+| `name` / `pushname` | String? | nome na agenda / nome do perfil |
+| `lastSeen` / `isOnline` | DateTime? / Boolean | última visualização conhecida e presença |
+| `agentActive` | Boolean | default `true` (`DEFAULT_AGENT_ACTIVE`); `false` = o agente de IA não responde |
+| `extras` | Json | metadados coletados pelo agente: `{ [nome do metadado]: valor }` |
+| `firstMessageAt` / `lastMessageAt` | DateTime? | primeira e última mensagem da conversa |
 
-Indexado por `(chatId, timestamp)` para listar o histórico de uma conversa em ordem.
+### Legado: `Chat`, `Message`, `Contact` (`chat`, `message`, `contact`)
+Do tempo em que o backend falava direto com o WhatsApp. Não são mais lidas nem escritas (mensagens estão no MongoDB do worker; `contact` era a agenda inteira do celular). Mantidas só para não apagar dados existentes.
 
 ## Convenções
 
 - Todos os IDs são `cuid()` gerados pelo Prisma, exceto `wppId`/`chatId` que vêm prontos do WhatsApp.
 - Toda FK usa `onDelete: Cascade`: apagar uma `Organization` apaga members, invitations, sessão de WhatsApp, chats e mensagens associados.
 - Campos de "enum" (`role`, `status`, `type`) são `String` livres (não `enum` do Prisma) porque o better-auth escreve valores nessas colunas diretamente e porque novos status do wppconnect podem aparecer sem exigir migration.
+
+## Agentes de IA
+
+### `Agent` (`agent`)
+Agente de IA de uma organização (respondido pelo AI-Worker). Uma organização pode ter vários; `Organization.agentId` aponta qual responde os contatos.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `organizationId` | String | FK → `Organization`, cascade on delete |
+| `name` | String | nome de exibição usado pelo agente na conversa |
+| `active` | Boolean | default `true`; inativo não responde |
+| `context` | String | prompt que o agente segue; vazio = não responde |
+| `tokenOpenAi` / `tokenAdk` | String? | chaves OpenAI (embeddings do RAG) e Google (Gemini), **criptografadas** com AES-256-GCM (`AGENT_TOKENS_SECRET`); a API nunca devolve o valor |
+| `documents` | String[] | links dos arquivos do RAG (S3 da plataforma ou links públicos) |
+| `resetKeywords` | String[] | mensagens que, enviadas sozinhas pelo contato, apagam o histórico da conversa com o agente e os `extras` dele (comparação sem maiúsculas/acentos/pontuação) |
+| `resetMessage` | String | frase enviada quando uma palavra de reset encerra a conversa (tem um texto padrão) |
+| `documentsStatus` | Json | `{ [url]: { status: pending\|processing\|ready\|failed, chunks, error, updatedAt } }` |
+
+### `Metadado` (`metadado`)
+Dado que o agente deve coletar do contato. O valor coletado fica no contato (`extras[name]`, MongoDB do worker-whatsapp), não aqui.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `agentId` | String | FK → `Agent`, cascade on delete |
+| `name` | String | chave em `extras`; único por agente |
+| `descricao` | String | como perguntar, tratar e validar o dado |
+
+### `Organization.agentId`
+Agente em uso pela organização (`onDelete: SetNull`). O primeiro agente criado já fica em uso.

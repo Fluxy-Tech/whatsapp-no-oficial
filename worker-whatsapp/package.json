@@ -1,0 +1,31 @@
+{
+  "name": "worker-whatsapp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Worker responsável pela conexão WPPConnect, filas RabbitMQ, histórico no MongoDB e mídia no S3",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1146.0",
+    "@aws-sdk/s3-request-presigner": "^3.1146.0",
+    "@wppconnect-team/wppconnect": "^2.3.4",
+    "amqplib": "^2.2.0",
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
+    "mime-types": "^3.0.2",
+    "mongoose": "^9.10.4",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/mime-types": "^3.0.1",
+    "@types/node": "^22.20.5",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.9.3"
+  }
+}

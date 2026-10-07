@@ -2,14 +2,14 @@ import type { NextFunction, Request, Response } from "express";
 import { fromNodeHeaders } from "better-auth/node";
 import { auth } from "../lib/auth";
 import { prisma } from "../lib/prisma";
-
-export type OrgRole = "owner" | "admin" | "member";
+import { hasAccess, isManagerRole, type AccessLevel, type Module, type Permissions } from "../lib/roles";
+import { getRolePermissions } from "../services/organization.service";
 
 declare global {
   namespace Express {
     interface Request {
       session?: Awaited<ReturnType<typeof auth.api.getSession>>;
-      member?: { id: string; role: string; organizationId: string };
+      member?: { id: string; role: string; organizationId: string; userId: string; permissions: Permissions };
     }
   }
 }
@@ -25,23 +25,41 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   next();
 }
 
-export function requireOrgRole(roles: OrgRole[]) {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    const activeOrganizationId = req.session?.session.activeOrganizationId;
+/** Loads the member of the active organization (role + permissions) into req.member. */
+export async function requireMember(req: Request, res: Response, next: NextFunction) {
+  if (req.member) return next();
 
-    if (!activeOrganizationId) {
-      return res.status(400).json({ error: "No active organization selected" });
-    }
+  const organizationId = req.session?.session.activeOrganizationId;
+  if (!organizationId) {
+    return res.status(400).json({ error: "No active organization selected" });
+  }
 
-    const member = await prisma.member.findFirst({
-      where: { organizationId: activeOrganizationId, userId: req.session!.user.id },
-    });
+  const member = await prisma.member.findFirst({
+    where: { organizationId, userId: req.session!.user.id },
+  });
+  if (!member) {
+    return res.status(403).json({ error: "Você não é membro desta organização" });
+  }
 
-    if (!member || !roles.includes(member.role as OrgRole)) {
-      return res.status(403).json({ error: "Forbidden: insufficient role" });
-    }
+  const permissions = await getRolePermissions(organizationId, member.role);
+  req.member = { id: member.id, role: member.role, organizationId, userId: member.userId, permissions };
+  next();
+}
 
-    req.member = { id: member.id, role: member.role, organizationId: member.organizationId };
-    next();
+function withMember(check: (member: NonNullable<Request["member"]>) => boolean) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    requireMember(req, res, () => {
+      if (!check(req.member!)) {
+        return res.status(403).json({ error: "Seu cargo não tem permissão para esta ação" });
+      }
+      next();
+    }).catch(next);
   };
 }
+
+/** The member's role must give at least `level` access to `module`. */
+export const requirePermission = (module: Module, level: AccessLevel) =>
+  withMember((member) => hasAccess(member.permissions, module, level));
+
+/** admin or gerente: members, invites and access configuration. */
+export const requireManager = withMember((member) => isManagerRole(member.role));

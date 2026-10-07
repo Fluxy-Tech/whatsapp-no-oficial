@@ -18,3 +18,6 @@ frontend/dist/
 
 # docker
 postgres_data/
+
+# segredos compartilhados (S3, Mongo, Rabbit)
+env-geral

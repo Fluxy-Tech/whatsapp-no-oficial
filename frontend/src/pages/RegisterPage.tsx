@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuthLayout } from "@/layouts/AuthLayout";
 
 export function RegisterPage() {
   const navigate = useNavigate();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [organizationName, setOrganizationName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -28,31 +28,17 @@ export function RegisterPage() {
       return;
     }
 
-    // The account that creates the organization becomes its "owner", the
-    // only role (besides "admin") allowed to connect WhatsApp.
-    const { data: createdOrganization, error: orgError } = await authClient.organization.create({
-      name: organizationName,
-      slug: organizationName.toLowerCase().trim().replace(/\s+/g, "-"),
-    });
-
-    if (orgError) {
-      setLoading(false);
-      setError(orgError.message ?? "Não foi possível criar a organização");
-      return;
-    }
-
-    await authClient.organization.setActive({ organizationId: createdOrganization.id });
     setLoading(false);
-
-    navigate("/dashboard");
+    // The company is created (or joined with an invite code) on the next screen.
+    navigate("/organizacoes");
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
+    <AuthLayout>
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Criar conta</CardTitle>
-          <CardDescription>Crie sua conta e a organização da sua empresa</CardDescription>
+          <CardDescription>Crie sua conta no GetLeads; depois você cria sua empresa ou entra em uma com um código de convite</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>
@@ -81,15 +67,6 @@ export function RegisterPage() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="organizationName">Nome da organização</Label>
-              <Input
-                id="organizationName"
-                required
-                value={organizationName}
-                onChange={(e) => setOrganizationName(e.target.value)}
-              />
-            </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Criando..." : "Criar conta"}
@@ -103,6 +80,6 @@ export function RegisterPage() {
           </p>
         </CardContent>
       </Card>
-    </div>
+    </AuthLayout>
   );
 }

@@ -137,7 +137,7 @@ export function ContactsList({ selectedChatId, onSelect }: ContactsListProps) {
                     {contact.isGroup && <Badge variant="secondary">Grupo</Badge>}
                     {contact.isBusiness && <Badge variant="outline">Empresa</Badge>}
                     {unreadChatIds.has(contact.contactId) && (
-                      <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-green-500" />
+                      <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-primary" />
                     )}
                   </div>
                 </button>
