@@ -35,11 +35,11 @@ Na raiz do projeto (onde está o `docker-compose.yml`):
 docker compose up --build
 ```
 
+O banco é externo (Postgres de produção, `DATABASE_URL` do `backend/.env`); nenhum Postgres é criado localmente. As migrations são aplicadas com `npx prisma migrate deploy` (a imagem de produção já faz isso ao subir).
+
 Isso vai, na primeira vez:
-1. Baixar a imagem do Postgres e subir o banco `sturnus_flows`.
-2. Construir as imagens do backend e do `worker-whatsapp` (o worker instala o Chromium usado pelo wppconnect).
-3. Rodar `prisma db push` para criar as tabelas no banco (não precisa rodar migration manualmente).
-4. Subir o worker (`:6801`), o backend (`:6802`) e o frontend (`:6803`) em modo dev, com hot-reload.
+1. Construir as imagens do backend e do `worker-whatsapp` (o worker instala o Chromium usado pelo wppconnect).
+2. Subir o worker (`:6801`), o backend (`:6802`) e o frontend (`:6803`) em modo dev, com hot-reload.
 
 Primeira build pode demorar alguns minutos (por causa do Chromium). Builds seguintes são rápidas, pois as dependências ficam em volumes nomeados (`backend_node_modules`, `frontend_node_modules`) e só reinstalam se o `package.json` mudar.
 
