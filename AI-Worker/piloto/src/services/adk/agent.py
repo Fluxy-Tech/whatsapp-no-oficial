@@ -16,7 +16,7 @@ from google.adk.agents import Agent
 from google.adk.models import Gemini
 
 from src import config
-from src.services.adk.infos import AGENT_TIMEZONE, GOOGLE_ADK_MODEL
+from src.services.adk.infos import AGENT_TIMEZONE, GOOGLE_ADK_MODEL, QUEBRA_MENSAGEM
 from src.services.tokens import UsoTokens
 from src.services.adk.tools import build_agendamento, build_consultar_conhecimento, build_registrar_metadado
 
@@ -53,6 +53,7 @@ ela é, o que você pode e não pode falar, e como deve se comunicar). Siga-as.
 {coleta}
 {rag}
 {agendamento}
+{quebra}
 """
 
 COLETA_INSTRUCTION = """
@@ -89,6 +90,21 @@ empresa.
 - Com o horário escolhido, chame agendar_reuniao. Só diga que a reunião está
   agendada se a ferramenta retornar ok=true; se não, explique e ofereça os
   horários livres retornados.
+"""
+
+QUEBRA_INSTRUCTION = """
+## Mensagens quebradas
+
+Escreva como uma pessoa no WhatsApp: em vez de um bloco único, divida a
+resposta em mensagens curtas, separadas pelo marcador {marcador}. Cada parte
+será enviada como uma mensagem separada, na ordem. Exemplo:
+
+Oi, tudo bem?{marcador}Vi que você quer saber sobre os planos.{marcador}Qual é o tamanho da sua empresa?
+
+- Use de 1 a 4 partes; respostas curtas podem ter uma parte só.
+- Quebre entre ideias completas, nunca no meio de uma frase, lista ou link.
+- Use o marcador exatamente como {marcador}, sem espaços ou variações, e não
+  comente sobre ele.
 """
 
 DIAS_SEMANA = ("segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo")
@@ -164,6 +180,7 @@ def build_agent(agent_info: dict, contact: dict | None = None, uso: UsoTokens | 
         agendamento=AGENDAMENTO_INSTRUCTION.format(duracao=agent_info.get("meetingDurationMinutes") or 60)
         if agenda
         else "",
+        quebra=QUEBRA_INSTRUCTION.format(marcador=QUEBRA_MENSAGEM) if agent_info.get("splitMessages") else "",
     )
 
     tools = []

@@ -130,6 +130,25 @@ export async function ensureCanEnter(user: SessionUser, organizationId: string) 
   if (!member) throw new OrganizationError(403, "Você não é membro desta empresa");
 }
 
+export const MESSAGE_WAIT_LIMITS = { min: 0, max: 600 };
+
+/** Company settings: how long the agent waits for the contact to stop typing. */
+export async function updateOrganizationSettings(organizationId: string, input: { messageWaitSeconds?: unknown }) {
+  const data: { messageWaitSeconds?: number } = {};
+  if (input.messageWaitSeconds !== undefined) {
+    const seconds = Number(input.messageWaitSeconds);
+    if (!Number.isInteger(seconds) || seconds < MESSAGE_WAIT_LIMITS.min || seconds > MESSAGE_WAIT_LIMITS.max) {
+      throw new OrganizationError(
+        400,
+        `O tempo de espera deve ser um número inteiro entre ${MESSAGE_WAIT_LIMITS.min} e ${MESSAGE_WAIT_LIMITS.max} segundos`,
+      );
+    }
+    data.messageWaitSeconds = seconds;
+  }
+  const organization = await prisma.organization.update({ where: { id: organizationId }, data });
+  return { messageWaitSeconds: organization.messageWaitSeconds };
+}
+
 export async function renameOrganization(organizationId: string, rawName: unknown) {
   const name = String(rawName ?? "").trim();
   if (!name) throw new OrganizationError(400, "Informe o nome da empresa");

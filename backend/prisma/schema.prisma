@@ -111,6 +111,10 @@ model Organization {
   agentId String? @unique
   agent   Agent?  @relation("OrganizationActiveAgent", fields: [agentId], references: [id], onDelete: SetNull)
 
+  // Seconds of silence the contact must keep before the agent answers. Every
+  // new message restarts the wait and joins the previous ones (one answer).
+  messageWaitSeconds Int @default(20)
+
   rolePermissions OrganizationRolePermission[]
   pipelines       Pipeline[]
   leadCards       LeadCard[]
@@ -306,6 +310,8 @@ model Agent {
   // (digits only, e.g. 5511999999999). null = no notification.
   numberPhoneNotification String?
   descriptionNotification String       @default("Envie um relatório curto da conversa com o contato e liste todos os metadados coletados.")
+  // The agent splits its answer with [QB] and each part is sent as its own message.
+  splitMessages           Boolean      @default(false)
 
   // Kanban automation. A stage implies its pipeline (esteira).
   // leadOnFirstMessage: creates the lead card in leadStage on the contact's first message.

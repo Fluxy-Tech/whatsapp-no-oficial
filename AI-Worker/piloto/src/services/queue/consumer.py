@@ -8,7 +8,7 @@ manda mensagem e a organização tem um agente ativo com context):
   "jobId", "organizationId",
   "agent": {"id", "name", "context", "tokenOpenAi", "tokenAdk",
             "metadados": [{"name", "descricao"}], "documents": [url], "resetKeywords": [str], "resetMessage": str,
-            "numberPhoneNotification": str | null, "descriptionNotification": str,
+            "numberPhoneNotification": str | null, "descriptionNotification": str, "splitMessages": bool,
             "schedulingEnabled": bool, "meetingDurationMinutes": int},
   "contact": {"id", "chatId", "number", "name", "extras": {nome: valor}},
   "messages": [{"messageId", "type", "text", "timestamp"}]
@@ -28,6 +28,7 @@ from src import config
 from src.infra.rabbitmq.connection import Reply
 from src.infra.pgvector.connection import delete_chunks
 from src.infra.backend.client import clear_contact_extras, merge_contact_extras
+from src.services.adk.infos import QUEBRA_MENSAGEM
 from src.services.adk.notificacao import coleta_concluida, gerar_notificacao, numero_notificacao
 from src.services.adk.runner import gerar_resposta, resetar_conversa
 from src.services.rag_ingestion.ingest import ingest_document
@@ -60,7 +61,15 @@ def _pediu_reset(messages: list[dict], agent: dict) -> bool:
     return bool(palavras) and any(_normalizar(m.get("text", "")) in palavras for m in messages)
 
 
-def _outbound(organization_id: str, contact: dict, job: dict, texto: str) -> tuple[str, dict]:
+def partes_da_resposta(texto: str, quebrar: bool) -> list[str]:
+    """Com splitMessages, cada trecho entre [QB] vira uma mensagem (vazios
+    descartados). Sem ele, um [QB] que o modelo escreva vira quebra de linha."""
+    if not quebrar:
+        return [texto.replace(QUEBRA_MENSAGEM, "\n").strip()] if texto.strip() else []
+    return [parte.strip() for parte in texto.split(QUEBRA_MENSAGEM) if parte.strip()]
+
+
+def _outbound(organization_id: str, contact: dict, job: dict, texto: str, parte: int = 0) -> tuple[str, dict]:
     return (
         config.QUEUE_WHATSAPP_OUTBOUND,
         {
@@ -70,7 +79,7 @@ def _outbound(organization_id: str, contact: dict, job: dict, texto: str) -> tup
             "text": texto,
             # O worker-whatsapp ignora externalId repetido: reentregas
             # desta mensagem não geram resposta duplicada.
-            "externalId": f"ai-{job.get('jobId')}",
+            "externalId": f"ai-{job.get('jobId')}" if parte == 0 else f"ai-{job.get('jobId')}-{parte}",
         },
     )
 
@@ -127,9 +136,9 @@ def _responder(job: dict, organization_id: str, agent: dict, contact: dict, perg
             _log(job, f"falha ao salvar extras no contato: {error}")
             traceback.print_exc()
 
-    publishes = []
-    if resultado.texto:
-        publishes.append(_outbound(organization_id, contact, job, resultado.texto))
+    # Publicadas em ordem; o worker-whatsapp envia uma por vez (prefetch 1).
+    partes = partes_da_resposta(resultado.texto, bool(agent.get("splitMessages")))
+    publishes = [_outbound(organization_id, contact, job, texto, i) for i, texto in enumerate(partes)]
 
     notificacao = _notificacao(job, organization_id, agent, contact, resultado, uso)
     if notificacao:

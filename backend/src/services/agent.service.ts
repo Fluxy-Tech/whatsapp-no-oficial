@@ -53,6 +53,8 @@ export type AgentInput = {
   numberPhoneNotification?: string | null;
   /** What the agent must write in that message; empty = default description. */
   descriptionNotification?: string;
+  /** Answer split with [QB], one WhatsApp message per part. */
+  splitMessages?: boolean;
   /** Kanban: create the lead on the first message, in leadStageId. */
   leadOnFirstMessage?: boolean;
   leadStageId?: string | null;
@@ -109,6 +111,7 @@ export function agentView(agent: AgentWithMetadados, activeAgentId: string | nul
     resetMessage: agent.resetMessage,
     numberPhoneNotification: agent.numberPhoneNotification,
     descriptionNotification: agent.descriptionNotification,
+    splitMessages: agent.splitMessages,
     leadOnFirstMessage: agent.leadOnFirstMessage,
     leadStageId: agent.leadStageId,
     completedStageId: agent.completedStageId,
@@ -324,6 +327,7 @@ export async function createAgent(organizationId: string, input: AgentInput) {
       resetMessage: resetMessageOf(input.resetMessage),
       numberPhoneNotification: phoneNotificationOf(input.numberPhoneNotification),
       descriptionNotification: descriptionNotificationOf(input.descriptionNotification),
+      splitMessages: input.splitMessages ?? false,
       leadOnFirstMessage: input.leadOnFirstMessage ?? false,
       leadStageId: input.leadStageId ?? null,
       completedStageId: input.completedStageId ?? null,
@@ -362,6 +366,7 @@ export async function updateAgent(organizationId: string, agentId: string, input
   if (input.descriptionNotification !== undefined) {
     data.descriptionNotification = descriptionNotificationOf(input.descriptionNotification);
   }
+  if (input.splitMessages !== undefined) data.splitMessages = input.splitMessages;
   if (input.leadOnFirstMessage !== undefined) data.leadOnFirstMessage = input.leadOnFirstMessage;
   await validateStageIds(organizationId, [
     input.leadStageId,

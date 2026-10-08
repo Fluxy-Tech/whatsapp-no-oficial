@@ -2,6 +2,7 @@ import { authClient } from "@/lib/auth-client";
 import { api } from "@/lib/api";
 import { useOrganization, usePermission } from "@/providers/OrganizationProvider";
 import { MembersCard } from "@/components/settings/MembersCard";
+import { MessageWaitForm } from "@/components/settings/MessageWaitForm";
 import { NameForm } from "@/components/settings/NameForm";
 import { PermissionsCard } from "@/components/settings/PermissionsCard";
 import { WhatsappConnectionCard } from "@/components/WhatsappConnectionCard";
@@ -38,13 +39,18 @@ export function SettingsPage() {
           <CardTitle>Empresa</CardTitle>
           {!canEdit && <CardDescription>Seu cargo só pode ver os dados da empresa.</CardDescription>}
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
           <NameForm
             id="organization-name"
             label="Nome da empresa"
             initialValue={activeOrganization?.name ?? ""}
             disabled={!canEdit || !activeOrganization}
             onSave={renameOrganization}
+          />
+          <MessageWaitForm
+            initialValue={current?.organization.messageWaitSeconds ?? 20}
+            disabled={!canEdit || !current}
+            onSaved={refresh}
           />
         </CardContent>
       </Card>

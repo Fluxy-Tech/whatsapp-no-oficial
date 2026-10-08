@@ -8,7 +8,7 @@ from google.genai import types
 from src.config import AI_SESSION_TTL_HOURS
 from src.infra.adk.session_service import get_session_service
 from src.services.adk.agent import build_agent
-from src.services.adk.infos import APP_NAME, GOOGLE_ADK_MODEL, STATE_EXTRAS
+from src.services.adk.infos import APP_NAME, GOOGLE_ADK_MODEL, QUEBRA_MENSAGEM, STATE_EXTRAS
 from src.services.tokens import UsoTokens
 
 
@@ -34,7 +34,9 @@ def _historico(sessao) -> list[tuple[str, str]]:
     for event in (sessao.events if sessao else None) or []:
         if not event.content or not event.content.parts:
             continue
-        texto = "".join(p.text or "" for p in event.content.parts if getattr(p, "text", None)).strip()
+        texto = "".join(p.text or "" for p in event.content.parts if getattr(p, "text", None))
+        # As partes de uma resposta quebrada viram linhas (ex.: no relatório da notificação).
+        texto = texto.replace(QUEBRA_MENSAGEM, "\n").strip()
         if texto:
             linhas.append(("Contato" if event.author == "user" else "Agente", texto))
     return linhas

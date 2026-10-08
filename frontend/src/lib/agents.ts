@@ -39,6 +39,8 @@ export type Agent = {
   numberPhoneNotification: string | null;
   /** What the agent writes in that message (e.g. a report of the conversation). */
   descriptionNotification: string;
+  /** Answer split with [QB]: each part is sent as its own WhatsApp message. */
+  splitMessages: boolean;
   /** Kanban: create the lead on the first message, in leadStageId. */
   leadOnFirstMessage: boolean;
   leadStageId: string | null;

@@ -14,6 +14,7 @@ import {
   OrganizationError,
   removeMember,
   renameOrganization,
+  updateOrganizationSettings,
   updateMember,
   updateRolePermissions,
 } from "../services/organization.service";
@@ -52,7 +53,11 @@ router.get("/current", requireMember, async (req, res) => {
   const member = req.member!;
   const organization = await prisma.organization.findUnique({ where: { id: member.organizationId } });
   res.json({
-    organization: { id: member.organizationId, name: organization?.name ?? "" },
+    organization: {
+      id: member.organizationId,
+      name: organization?.name ?? "",
+      messageWaitSeconds: organization?.messageWaitSeconds ?? 20,
+    },
     role: member.role,
     permissions: member.permissions,
     isAdmin: isAdminEmail(user(req).email),
@@ -62,6 +67,10 @@ router.get("/current", requireMember, async (req, res) => {
 
 router.patch("/current", requirePermission("configuracoes", "edit"), async (req, res) => {
   res.json(await renameOrganization(organizationId(req), req.body?.name));
+});
+
+router.patch("/current/settings", requirePermission("configuracoes", "edit"), async (req, res) => {
+  res.json(await updateOrganizationSettings(organizationId(req), { messageWaitSeconds: req.body?.messageWaitSeconds }));
 });
 
 // Any member can list members (kanban/calendar assignee pickers).

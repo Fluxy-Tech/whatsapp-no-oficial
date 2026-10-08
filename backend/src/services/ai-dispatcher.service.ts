@@ -7,10 +7,19 @@ import type { WorkerMessage } from "../lib/worker-client";
 import { canAnswer } from "./agent.service";
 import { extrasOf } from "./target.service";
 
-// People often split one thought into several WhatsApp messages. We wait for
-// a short quiet period and send them to the agent together, so it answers
-// once instead of once per message.
-const DEBOUNCE_MS = Number(process.env.AI_DEBOUNCE_MS) || 6_000;
+// People often split one thought into several WhatsApp messages. Like a person
+// reading, we wait until the contact stays quiet for the company's
+// messageWaitSeconds (each new message restarts the wait) and send everything
+// to the agent together, so it answers once instead of once per message.
+const DEFAULT_WAIT_SECONDS = 20;
+
+async function messageWaitMs(organizationId: string) {
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { messageWaitSeconds: true },
+  });
+  return (organization?.messageWaitSeconds ?? DEFAULT_WAIT_SECONDS) * 1000;
+}
 
 type PendingConversation = {
   timer: NodeJS.Timeout;
@@ -83,6 +92,7 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
         resetMessage: agent.resetMessage,
         numberPhoneNotification: agent.numberPhoneNotification,
         descriptionNotification: agent.descriptionNotification,
+        splitMessages: agent.splitMessages,
         schedulingEnabled: agent.schedulingEnabled,
         meetingDurationMinutes: agent.meetingDurationMinutes,
       },
@@ -100,10 +110,12 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
 }
 
 /** Called for every message.received webhook from worker-whatsapp. */
-export function handleIncomingMessage(organizationId: string, message: WorkerMessage, contact: Target) {
+export async function handleIncomingMessage(organizationId: string, message: WorkerMessage, contact: Target) {
   if (message.fromMe) return;
 
   const key = `${organizationId}:${contact.chatId}`;
+  const waitMs = contact.agentActive ? await messageWaitMs(organizationId) : 0;
+  // Read after the await: another message may have arrived meanwhile.
   const existing = pending.get(key);
 
   // Contact switched off: drop anything waiting, the agent must stay silent.
@@ -122,7 +134,7 @@ export function handleIncomingMessage(organizationId: string, message: WorkerMes
       dispatch(organizationId, conversation).catch((error) =>
         console.error(`Failed to send conversation ${key} to the AI agent:`, error),
       );
-    }, DEBOUNCE_MS),
+    }, waitMs),
   };
   pending.set(key, conversation);
 }

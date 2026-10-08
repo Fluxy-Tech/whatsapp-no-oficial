@@ -35,7 +35,12 @@ export const ACCESS_LABELS: Record<AccessLevel, string> = {
 };
 
 export type CurrentOrganization = {
-  organization: { id: string; name: string };
+  organization: {
+    id: string;
+    name: string;
+    /** Seconds the agent waits for the contact to stop sending messages. */
+    messageWaitSeconds: number;
+  };
   role: string;
   permissions: Permissions;
   isAdmin: boolean;

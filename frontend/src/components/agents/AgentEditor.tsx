@@ -35,6 +35,7 @@ type Form = {
   resetMessage: string;
   numberPhoneNotification: string;
   descriptionNotification: string;
+  splitMessages: boolean;
   kanban: KanbanDraft;
   scheduling: SchedulingDraft;
 };
@@ -63,6 +64,7 @@ function toForm(agent: Agent | null): Form {
     resetMessage: agent?.resetMessage ?? DEFAULT_RESET_MESSAGE,
     numberPhoneNotification: agent?.numberPhoneNotification ?? "",
     descriptionNotification: agent?.descriptionNotification ?? DEFAULT_NOTIFICATION_DESCRIPTION,
+    splitMessages: agent?.splitMessages ?? false,
     kanban: {
       leadOnFirstMessage: agent?.leadOnFirstMessage ?? false,
       leadStageId: agent?.leadStageId ?? "",
@@ -193,6 +195,7 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
         resetMessage: form.resetMessage,
         numberPhoneNotification: form.numberPhoneNotification.trim() || null,
         descriptionNotification: form.descriptionNotification,
+        splitMessages: form.splitMessages,
         leadOnFirstMessage: form.kanban.leadOnFirstMessage,
         leadStageId: form.kanban.leadStageId || null,
         completedStageId: form.kanban.completedStageId || null,
@@ -377,6 +380,27 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
                       começa do zero. Deixe vazio para usar a frase padrão.
                     </p>
                   </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Mensagens quebradas</CardTitle>
+                  <CardDescription>
+                    O agente divide a resposta em mensagens curtas, como uma pessoa digitando no WhatsApp, e cada parte
+                    é enviada separadamente, na ordem.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <Switch
+                      checked={form.splitMessages}
+                      onCheckedChange={(splitMessages) => setForm({ ...form, splitMessages })}
+                      disabled={disabled}
+                      aria-label="Mensagens quebradas"
+                    />
+                    {form.splitMessages ? "Quebrar as respostas em várias mensagens" : "Responder em uma única mensagem"}
+                  </label>
                 </CardContent>
               </Card>
 

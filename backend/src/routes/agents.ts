@@ -62,6 +62,7 @@ function parseInput(body: unknown): AgentInput {
   if (raw.descriptionNotification !== undefined) {
     input.descriptionNotification = String(raw.descriptionNotification ?? "");
   }
+  if (raw.splitMessages !== undefined) input.splitMessages = Boolean(raw.splitMessages);
   if (raw.leadOnFirstMessage !== undefined) input.leadOnFirstMessage = Boolean(raw.leadOnFirstMessage);
   if (raw.leadStageId !== undefined) input.leadStageId = optionalId(raw.leadStageId);
   if (raw.completedStageId !== undefined) input.completedStageId = optionalId(raw.completedStageId);

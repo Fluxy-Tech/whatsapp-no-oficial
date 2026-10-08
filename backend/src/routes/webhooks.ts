@@ -3,7 +3,7 @@ import express, { Router } from "express";
 import { whatsappEvents } from "../lib/events";
 import { handleIncomingMessage } from "../services/ai-dispatcher.service";
 import { onLeadMessage } from "../services/kanban.service";
-import { targetView, upsertTarget, type ContactSnapshot } from "../services/target.service";
+import { mergeLidTarget, targetView, upsertTarget, type ContactSnapshot } from "../services/target.service";
 import { recordSessionState } from "../services/whatsapp.service";
 
 const router = Router();
@@ -74,7 +74,9 @@ async function dispatch(payload: WorkerWebhook) {
       });
       if (!target) break;
       if (event === "message.received") {
-        handleIncomingMessage(organizationId, data.message, target);
+        handleIncomingMessage(organizationId, data.message, target).catch((error) =>
+          console.error(`Failed to queue ${target.chatId} for the AI agent:`, error),
+        );
         // Kanban: the agent may be set to create the lead on the first message.
         onLeadMessage(organizationId, target.id).catch((error) =>
           console.error(`Failed to create the kanban lead for ${target.chatId}:`, error),
@@ -108,6 +110,12 @@ async function dispatch(payload: WorkerWebhook) {
     case "contact.updated": {
       // Presence / profile refresh: only updates contacts we already know.
       const target = await upsertTarget(organizationId, data.contact as ContactSnapshot, { create: false });
+      if (target) whatsappEvents.emit("contact-updated", { organizationId, contact: targetView(target) });
+      break;
+    }
+    case "contact.merged": {
+      // A @lid contact got its phone number: from now on it is the @c.us one.
+      const target = await mergeLidTarget(organizationId, data.fromChatId, data.contact as ContactSnapshot);
       if (target) whatsappEvents.emit("contact-updated", { organizationId, contact: targetView(target) });
       break;
     }
