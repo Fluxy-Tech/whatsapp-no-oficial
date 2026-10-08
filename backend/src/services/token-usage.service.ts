@@ -82,7 +82,9 @@ const pad = (value: number) => String(value).padStart(2, "0");
 
 /**
  * Tokens of an agent in a year (one bar per month), a month (per day) or a
- * day (per hour), grouped in APP_TIMEZONE, plus totals per kind.
+ * day (per hour), grouped in APP_TIMEZONE, plus totals per kind. Input
+ * (prompt, history, tool results) and output (answer, thinking) are kept
+ * apart: they are billed at different prices.
  */
 export async function getTokenUsage(
   organizationId: string,
@@ -122,10 +124,14 @@ export async function getTokenUsage(
 
   // month -> 1..12, day -> 1..31, hour -> 0..23 (in the app timezone).
   const field = Prisma.raw(unit === "month" ? "MONTH" : unit === "day" ? "DAY" : "HOUR");
-  const rows = await prisma.$queryRaw<{ bucket: number; kind: string; tokens: bigint; calls: bigint }[]>(Prisma.sql`
+  const rows = await prisma.$queryRaw<
+    { bucket: number; kind: string; tokens: bigint; input: bigint; output: bigint; calls: bigint }[]
+  >(Prisma.sql`
     SELECT EXTRACT(${field} FROM ("createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${APP_TIMEZONE}))::int AS bucket,
            kind,
            SUM("totalTokens")::bigint AS tokens,
+           SUM("inputTokens")::bigint AS input,
+           SUM("outputTokens")::bigint AS output,
            COUNT(*)::bigint AS calls
     FROM "agent_token_usage"
     WHERE "agentId" = ${agent.id} AND "createdAt" >= ${from} AND "createdAt" < ${to}
@@ -134,17 +140,32 @@ export async function getTokenUsage(
 
   const offset = unit === "hour" ? 0 : 1;
   const buckets = Array.from({ length: bucketCount }, (_, index) => ({ bucket: index + offset, tokens: 0 }));
-  const byKind = Object.fromEntries(TOKEN_KINDS.map((kind) => [kind, 0])) as Record<TokenKind, number>;
+  type Tokens = { input: number; output: number; total: number };
+  const byKind = Object.fromEntries(TOKEN_KINDS.map((kind) => [kind, { input: 0, output: 0, total: 0 }])) as Record<
+    TokenKind,
+    Tokens
+  >;
   let total = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
   let calls = 0;
   for (const row of rows) {
     const tokens = Number(row.tokens);
+    const input = Number(row.input);
+    const output = Number(row.output);
     const slot = buckets[row.bucket - offset];
     if (slot) slot.tokens += tokens;
-    if (row.kind in byKind) byKind[row.kind as TokenKind] += tokens;
+    const kind = byKind[row.kind as TokenKind];
+    if (kind) {
+      kind.input += input;
+      kind.output += output;
+      kind.total += tokens;
+    }
     total += tokens;
+    inputTokens += input;
+    outputTokens += output;
     calls += Number(row.calls);
   }
 
-  return { period, year, month, day, unit, buckets, total, calls, byKind };
+  return { period, year, month, day, unit, buckets, total, inputTokens, outputTokens, calls, byKind };
 }
