@@ -16,7 +16,8 @@ from google.adk.agents import Agent
 from google.adk.models import Gemini
 
 from src import config
-from src.services.adk.infos import AGENT_TIMEZONE, GOOGLE_ADK_MODEL
+from src.services.adk.historico import limitar_historico
+from src.services.adk.infos import AGENT_TIMEZONE, GOOGLE_ADK_MODEL, QUEBRA_MENSAGEM
 from src.services.adk.tools import build_consultar_conhecimento, build_registrar_metadado
 
 BASE_INSTRUCTION = """
@@ -51,6 +52,7 @@ ela é, o que você pode e não pode falar, e como deve se comunicar). Siga-as.
 {dados_contato}
 {coleta}
 {rag}
+{quebra}
 """
 
 COLETA_INSTRUCTION = """
@@ -71,6 +73,21 @@ A empresa anexou documentos com informações sobre ela. Sempre que a pergunta
 do contato puder ser respondida por esses documentos, chame
 consultar_conhecimento ANTES de responder e use só o que a ferramenta
 retornar. Se não encontrar nada relevante, diga isso em vez de inventar.
+"""
+
+QUEBRA_INSTRUCTION = """
+## Mensagens quebradas
+
+Escreva como uma pessoa no WhatsApp: em vez de um bloco único, divida a
+resposta em mensagens curtas, separadas pelo marcador {marcador}. Cada parte
+será enviada como uma mensagem separada, na ordem. Exemplo:
+
+Oi, tudo bem?{marcador}Vi que você quer saber sobre os planos.{marcador}Qual é o tamanho da sua empresa?
+
+- Use de 1 a 4 partes; respostas curtas podem ter uma parte só.
+- Quebre entre ideias completas, nunca no meio de uma frase, lista ou link.
+- Use o marcador exatamente como {marcador}, sem espaços ou variações, e não
+  comente sobre ele.
 """
 
 DIAS_SEMANA = ("segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo")
@@ -141,6 +158,7 @@ def build_agent(agent_info: dict, contact: dict | None = None) -> Agent:
         dados_contato=_dados_contato(contact, metadados),
         coleta=_coleta(contact, metadados),
         rag=RAG_INSTRUCTION if tem_documentos else "",
+        quebra=QUEBRA_INSTRUCTION.format(marcador=QUEBRA_MENSAGEM) if agent_info.get("splitMessages") else "",
     )
 
     tools = []
@@ -158,4 +176,5 @@ def build_agent(agent_info: dict, contact: dict | None = None) -> Agent:
         # como variável de state e quebraria.
         instruction=lambda _ctx: instruction,
         tools=tools,
+        before_model_callback=limitar_historico,
     )

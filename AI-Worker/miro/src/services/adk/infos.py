@@ -5,4 +5,8 @@ from src.config import AGENT_TIMEZONE, APP_NAME, GOOGLE_ADK_MODEL
 # turno e grava só o que mudou nos extras do contato.
 STATE_EXTRAS = "extras_coletados"
 
-__all__ = ["AGENT_TIMEZONE", "APP_NAME", "GOOGLE_ADK_MODEL", "STATE_EXTRAS"]
+# Marcador de quebra: com splitMessages ligado, o agente separa a resposta com
+# ele e cada parte vai como uma mensagem do WhatsApp.
+QUEBRA_MENSAGEM = "[QB]"
+
+__all__ = ["AGENT_TIMEZONE", "APP_NAME", "GOOGLE_ADK_MODEL", "QUEBRA_MENSAGEM", "STATE_EXTRAS"]

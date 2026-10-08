@@ -32,6 +32,9 @@ AGENT_TIMEZONE = os.getenv("AGENT_TIMEZONE", "America/Sao_Paulo")
 # Uma conversa sem mensagens por mais que isso começa uma sessão nova do ADK
 # (histórico curto). Os extras do contato continuam valendo entre sessões.
 AI_SESSION_TTL_HOURS = _int("AI_SESSION_TTL_HOURS", 24)
+# Quantas mensagens anteriores (contato + agente) vão para o modelo junto com
+# a mensagem atual. 0 = sem limite (toda a sessão).
+AI_HISTORY_MESSAGES = max(0, _int("AI_HISTORY_MESSAGES", 4))
 # Quantas respostas são geradas em paralelo.
 AI_CONCURRENCY = max(1, _int("AI_CONCURRENCY", 4))
 RAG_CHUNK_SIZE = _int("RAG_CHUNK_SIZE", 1000)
