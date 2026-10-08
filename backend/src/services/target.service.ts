@@ -124,7 +124,8 @@ const earlier = (a: Date | null, b: Date | null) => (!a ? b : !b ? a : a < b ? a
 /**
  * Um contato @lid ganhou número: o contato passa a ser o @c.us. Se o @c.us
  * ainda não existe, só troca o id; se já existe, junta os dois nele (lead,
- * reuniões, comentários, anexos, uso de tokens e metadados) e apaga o @lid.
+ * reuniões, comentários, anexos, uso de tokens, envios e bloqueio de campanha
+ * e metadados) e apaga o @lid.
  */
 export async function mergeLidTarget(organizationId: string, fromChatId: string, snapshot: ContactSnapshot) {
   if (!fromChatId.endsWith("@lid") || !snapshot?.chatId?.endsWith("@c.us")) return null;
@@ -152,6 +153,19 @@ export async function mergeLidTarget(organizationId: string, fromChatId: string,
     await tx.agentTokenUsage.updateMany(moved);
     await tx.leadComment.updateMany(moved);
     await tx.leadAttachment.updateMany(moved);
+    // Bloqueio de campanha: um por contato; o do @lid só passa se o @c.us não tiver
+    // (senão seria apagado junto com o @lid e o contato voltaria a receber campanhas).
+    const toBlock = await tx.targetBlockCampaign.findUnique({ where: { targetId: to.id }, select: { id: true } });
+    if (!toBlock) await tx.targetBlockCampaign.updateMany(moved);
+    // O @lid já falou depois de uma campanha enviada ao @c.us: essa primeira
+    // resposta já foi avaliada, então a próxima mensagem não conta como resposta.
+    if (from.firstMessageAt) {
+      await tx.campaignTarget.updateMany({
+        where: { targetId: to.id, respondedCampaign: false, createdAt: { lte: from.firstMessageAt } },
+        data: { respondedCampaign: true },
+      });
+    }
+    await tx.campaignTarget.updateMany(moved);
 
     await tx.target.delete({ where: { id: from.id } });
     await tx.target.update({

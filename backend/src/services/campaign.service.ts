@@ -479,22 +479,40 @@ export async function onCampaignMessageFailed(externalId: unknown, error: unknow
 
 const normalizePhrase = (value: string) => value.trim().toLowerCase();
 
+/** upsertTarget keeps firstMessageAt as the oldest message: equal = this one is the first. */
+function isFirstMessage(target: Target, messageAt?: string | null) {
+  const at = messageAt ? Date.parse(messageAt) : NaN;
+  return !Number.isNaN(at) && target.firstMessageAt?.getTime() === at;
+}
+
 /**
  * Contact sent a message: links it to the latest campaign send still without
  * a reply and, if the automatic block is on and the message is EXACTLY one of
  * the phrases, blocks the contact from future campaigns.
+ *
+ * Only the FIRST message counts: the first reply after a campaign send or,
+ * for a contact with no send linked (e.g. a @lid answering a campaign sent to
+ * the @c.us), the contact's first message ever. Anything else never blocks.
  */
-export async function handleCampaignResponse(organizationId: string, target: Target, text: string) {
+export async function handleCampaignResponse(
+  organizationId: string,
+  target: Target,
+  text: string,
+  messageAt?: string | null,
+) {
   const campaignTarget = await prisma.campaignTarget.findFirst({
     where: { targetId: target.id, respondedCampaign: false, status: { not: "FAILED" } },
     orderBy: { createdAt: "desc" },
   });
-  if (!campaignTarget) return;
 
-  await prisma.campaignTarget.update({
-    where: { id: campaignTarget.id },
-    data: { respondedCampaign: true, campaignResponse: text.slice(0, 1000) },
-  });
+  if (campaignTarget) {
+    await prisma.campaignTarget.update({
+      where: { id: campaignTarget.id },
+      data: { respondedCampaign: true, campaignResponse: text.slice(0, 1000) },
+    });
+  } else if (!isFirstMessage(target, messageAt)) {
+    return;
+  }
 
   const settings = await getCampaignSettings(organizationId);
   if (!settings.useWordsToBlockCampaign) return;

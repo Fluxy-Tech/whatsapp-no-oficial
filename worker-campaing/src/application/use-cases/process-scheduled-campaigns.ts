@@ -62,6 +62,30 @@ async function pauseForDisconnect(campaignId: string) {
   await prisma.campaign.update({ where: { id: campaignId }, data: { active: false, pausedReason: "DISCONNECTED" } });
 }
 
+/// As duas formas de celular brasileiro: com e sem o 9º dígito.
+function phoneVariants(phone: string): string[] {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("55") && digits.length === 13 && digits[4] === "9") {
+    return [digits, `${digits.slice(0, 4)}${digits.slice(5)}`];
+  }
+  if (digits.startsWith("55") && digits.length === 12) {
+    return [digits, `${digits.slice(0, 4)}9${digits.slice(4)}`];
+  }
+  return [digits];
+}
+
+/// O contato pediu pra sair (bloqueio automático por frase). Checado na hora
+/// do envio, não só ao criar a campanha: o bloqueio pode surgir no meio dela.
+async function isBlockedFromCampaigns(organizationId: string, phone: string): Promise<boolean> {
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT b."id" FROM "target_block_campaign" b
+    JOIN "target" t ON t."id" = b."targetId"
+    WHERE b."organizationId" = ${organizationId}
+      AND t."number" = ANY(${phoneVariants(phone)}::text[])
+    LIMIT 1`;
+  return rows.length > 0;
+}
+
 /// Enfileira 1 contato no worker-whatsapp. O CampaignTarget nasce QUEUED
 /// antes da publicação (o webhook de envio pode chegar logo em seguida); o
 /// backend o move para SENT/DELIVERED/READ/FAILED conforme os webhooks.
@@ -72,6 +96,25 @@ async function sendContact(
   const variables = contact.variables ?? [];
   const text = interpolateTemplate(campaign.templateText, variables);
   const externalId = `${CAMPAIGN_EXTERNAL_ID_PREFIX}${randomUUID()}`;
+
+  if (await isBlockedFromCampaigns(campaign.organizationId, contact.phone)) {
+    await prisma.campaignTarget.create({
+      data: {
+        campaignId: campaign.id,
+        phone: contact.phone,
+        name: contact.name ?? null,
+        status: "FAILED",
+        error: "Contato bloqueado para campanhas.",
+        variables,
+        text,
+      },
+    });
+    await prisma.campaign.update({
+      where: { id: campaign.id },
+      data: { totalContacts: { increment: 1 }, totalFailures: { increment: 1 } },
+    });
+    return;
+  }
 
   const campaignTarget = await prisma.campaignTarget.create({
     data: {

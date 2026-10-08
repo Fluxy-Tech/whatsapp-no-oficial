@@ -84,9 +84,12 @@ async function dispatch(payload: WorkerWebhook) {
         await onCampaignMessageSent(data.message, target);
       }
       if (event === "message.received") {
-        handleCampaignResponse(organizationId, target, data.message.body ?? data.message.caption ?? "").catch((error) =>
-          console.error(`Failed to record the campaign response of ${target.chatId}:`, error),
-        );
+        handleCampaignResponse(
+          organizationId,
+          target,
+          data.message.body ?? data.message.caption ?? "",
+          data.message.timestamp,
+        ).catch((error) => console.error(`Failed to record the campaign response of ${target.chatId}:`, error));
         handleIncomingMessage(organizationId, data.message, target).catch((error) =>
           console.error(`Failed to queue ${target.chatId} for the AI agent:`, error),
         );
