@@ -1,11 +1,11 @@
 import { env } from "../config/env";
 import { MessageDocument, MessageModel } from "../models/message.model";
 import { createLogger } from "../utils/logger";
-import { getContactSnapshot, resolveCanonicalChatId, type ContactSnapshot } from "./contact.service";
+import { getContactSnapshot, resolveContactChatId, type ContactSnapshot } from "./contact.service";
 import { StoredMedia, uploadMessageMedia } from "./storage.service";
 import { isSendInFlight } from "./whatsapp/outbound-tracker";
 import { getClient } from "./whatsapp/session.manager";
-import { ackToStatus, decodeBase64Payload, isIndividualChat, isPhoneChat, MEDIA_MESSAGE_TYPES, serializeWid } from "./whatsapp/wpp.utils";
+import { ackToStatus, decodeBase64Payload, isIndividualChat, MEDIA_MESSAGE_TYPES, serializeWid } from "./whatsapp/wpp.utils";
 
 const logger = createLogger("messages");
 
@@ -21,7 +21,7 @@ const IGNORED_TYPES = new Set([
   "revoked",
 ]);
 
-// Mensagens descartadas de propósito (grupos, status, @lid sem número...).
+// Mensagens descartadas de propósito (grupos, status, tipos sem conteúdo...).
 // O WhatsApp continua mandando os acks delas; com isso os ignoramos em
 // silêncio em vez de tentar de novo e mandar para a DLQ.
 const MAX_IGNORED_IDS = 10_000;
@@ -145,14 +145,8 @@ export async function processWhatsappMessage(
     return null;
   }
 
-  normalized.chatId = await resolveCanonicalChatId(organizationId, normalized.chatId);
-  // Só coletamos contatos @c.us: um @lid sem número conhecido não vira contato
-  // nem histórico.
-  if (!isPhoneChat(normalized.chatId)) {
-    logger.debug(`Mensagem ignorada: ${normalized.chatId} não é um contato @c.us`);
-    ignoreMessage(normalized.messageId);
-    return null;
-  }
+  // @c.us quando o número é conhecido; senão fica no @lid até ele aparecer.
+  normalized.chatId = await resolveContactChatId(organizationId, normalized.chatId);
 
   const handledBySender = normalized.fromMe && isSendInFlight(organizationId, normalized.chatId);
   const existing = await MessageModel.findOne({ organizationId, messageId: normalized.messageId });
@@ -260,7 +254,7 @@ export async function saveOutboundMessage(params: {
  * ser processada, então pedimos retry algumas vezes antes de desistir.
  */
 export async function applyAck(organizationId: string, messageId: string, ack: number, attempt: number) {
-  // Ack de mensagem que descartamos (grupo, status, @lid sem número): nada a fazer.
+  // Ack de mensagem que descartamos (grupo, status...): nada a fazer.
   if (ignoredMessageIds.has(messageId)) return null;
   const chatId = chatIdFromMessageId(messageId);
   if (chatId && !isIndividualChat(chatId)) return null;

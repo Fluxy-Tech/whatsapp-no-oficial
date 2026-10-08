@@ -14,8 +14,10 @@ export type ContactSnapshot = {
 
 const DEFAULT_AGENT_ACTIVE = process.env.DEFAULT_AGENT_ACTIVE !== "false";
 
-// Só contatos com número de telefone (5511999999999@c.us); @lid não é coletado.
-export const isPhoneChatId = (chatId: string) => /^\d{8,}@c\.us$/.test(chatId);
+// Conversas 1:1: número de telefone (5511999999999@c.us) ou @lid (id de
+// privacidade do WhatsApp, número ainda oculto). Quando o número de um @lid
+// aparece, o worker manda contact.merged e o contato vira @c.us (mergeLidTarget).
+export const isContactChatId = (chatId: string) => /^\d{8,}@(c\.us|lid)$/.test(chatId);
 
 export function extrasOf(target: Pick<Target, "extras">): Record<string, string> {
   const value = target.extras;
@@ -66,7 +68,7 @@ export async function upsertTarget(
   snapshot: ContactSnapshot,
   options: { messageAt?: string | null; create?: boolean } = {},
 ): Promise<Target | null> {
-  if (!snapshot?.chatId || !isPhoneChatId(snapshot.chatId)) return null;
+  if (!snapshot?.chatId || !isContactChatId(snapshot.chatId)) return null;
 
   const messageAt = parseDate(options.messageAt);
   const lastSeen = parseDate(snapshot.lastSeen);
@@ -115,6 +117,60 @@ export async function upsertTarget(
     });
   }
   throw new Error(`Could not upsert target ${snapshot.chatId}`);
+}
+
+const earlier = (a: Date | null, b: Date | null) => (!a ? b : !b ? a : a < b ? a : b);
+
+/**
+ * Um contato @lid ganhou número: o contato passa a ser o @c.us. Se o @c.us
+ * ainda não existe, só troca o id; se já existe, junta os dois nele (lead,
+ * reuniões, comentários, anexos, uso de tokens e metadados) e apaga o @lid.
+ */
+export async function mergeLidTarget(organizationId: string, fromChatId: string, snapshot: ContactSnapshot) {
+  if (!fromChatId.endsWith("@lid") || !snapshot?.chatId?.endsWith("@c.us")) return null;
+
+  await prisma.$transaction(async (tx) => {
+    const from = await tx.target.findUnique({ where: { organizationId_chatId: { organizationId, chatId: fromChatId } } });
+    if (!from) return;
+    const to = await tx.target.findUnique({
+      where: { organizationId_chatId: { organizationId, chatId: snapshot.chatId } },
+      include: { leadCard: { select: { id: true } } },
+    });
+
+    if (!to) {
+      await tx.target.update({
+        where: { id: from.id },
+        data: { chatId: snapshot.chatId, ...(snapshot.number ? { number: snapshot.number } : {}) },
+      });
+      return;
+    }
+
+    const moved = { where: { targetId: from.id }, data: { targetId: to.id } };
+    // Um lead por contato: o do @lid só passa se o @c.us não tiver (senão é apagado junto).
+    if (!to.leadCard) await tx.leadCard.updateMany(moved);
+    await tx.calendarEvent.updateMany(moved);
+    await tx.agentTokenUsage.updateMany(moved);
+    await tx.leadComment.updateMany(moved);
+    await tx.leadAttachment.updateMany(moved);
+
+    await tx.target.delete({ where: { id: from.id } });
+    await tx.target.update({
+      where: { id: to.id },
+      data: {
+        name: to.name ?? from.name,
+        pushname: to.pushname ?? from.pushname,
+        // Desligado em qualquer um dos dois continua desligado.
+        agentActive: to.agentActive && from.agentActive,
+        extras: { ...extrasOf(from), ...extrasOf(to) } as Prisma.InputJsonValue,
+        lastSeen: later(to.lastSeen, from.lastSeen),
+        firstMessageAt: earlier(to.firstMessageAt, from.firstMessageAt),
+        lastMessageAt: later(to.lastMessageAt, from.lastMessageAt),
+      },
+    });
+  });
+
+  // Atualiza número/nome com o retrato que veio no evento.
+  return upsertTarget(organizationId, snapshot, { create: false });
 }
 
 export async function listTargets(organizationId: string, { onlyWithMessages = false } = {}) {

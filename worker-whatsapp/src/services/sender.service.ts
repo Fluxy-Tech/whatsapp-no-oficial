@@ -7,10 +7,10 @@ import { saveOutboundMessage } from "./message.service";
 import { StoredMedia, uploadMessageMedia } from "./storage.service";
 import { beginSend, endSend } from "./whatsapp/outbound-tracker";
 import { getClient } from "./whatsapp/session.manager";
-import { resolveCanonicalChatId } from "./contact.service";
+import { resolveContactChatId } from "./contact.service";
 import {
   decodeBase64Payload,
-  isPhoneChat,
+  isIndividualChat,
   normalizeRecipient,
   normalizeWhatsappBold,
   serializeWid,
@@ -35,9 +35,9 @@ async function resolveChatId(organizationId: string, to: string) {
   const client = getClient(organizationId)!;
   const { chatId, digits } = normalizeRecipient(to);
   if (chatId) {
-    // Só conversamos com contatos @c.us (número de telefone).
-    const canonical = await resolveCanonicalChatId(organizationId, chatId);
-    if (!isPhoneChat(canonical)) throw new NonRetryableError(`Destino ${to} não é um contato @c.us`);
+    // Contato @c.us ou @lid (número ainda oculto); grupos e afins não.
+    const canonical = await resolveContactChatId(organizationId, chatId);
+    if (!isIndividualChat(canonical)) throw new NonRetryableError(`Destino ${to} não é um contato`);
     return canonical;
   }
 

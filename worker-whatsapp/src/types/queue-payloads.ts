@@ -79,7 +79,9 @@ export type WebhookEventName =
   | "message.sent"
   | "message.ack"
   | "message.failed"
-  | "contact.updated";
+  | "contact.updated"
+  /** Um contato @lid ganhou número: data = { fromChatId (@lid), contact (@c.us) }. */
+  | "contact.merged";
 
 export type WebhookEvent = {
   id: string;

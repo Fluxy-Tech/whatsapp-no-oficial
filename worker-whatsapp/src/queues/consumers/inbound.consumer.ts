@@ -1,7 +1,7 @@
 import { env } from "../../config/env";
 import { consume } from "../../config/rabbitmq";
 import { applyPresence, resolveCanonicalChatId } from "../../services/contact.service";
-import { isPhoneChat } from "../../services/whatsapp/wpp.utils";
+import { isIndividualChat } from "../../services/whatsapp/wpp.utils";
 import { applyAck, processWhatsappMessage } from "../../services/message.service";
 import { notifyBackend } from "../../services/webhook.service";
 import type { InboundEvent } from "../../types/queue-payloads";
@@ -40,10 +40,10 @@ export async function startInboundConsumer() {
       }
 
       case "presence": {
-        // Presença pode vir pelo @lid; só interessa a de contatos @c.us. O
-        // backend só atualiza contatos que já conversaram com a organização.
+        // Presença pode vir pelo @lid: usa o @c.us quando o número é conhecido.
+        // O backend só atualiza contatos que já conversaram com a organização.
         const chatId = await resolveCanonicalChatId(event.organizationId, event.chatId);
-        if (!isPhoneChat(chatId)) return;
+        if (!isIndividualChat(chatId)) return;
         const contact = applyPresence(event.organizationId, chatId, event.isOnline, new Date(event.at));
         if (contact) await notifyBackend("contact.updated", event.organizationId, { contact });
         return;

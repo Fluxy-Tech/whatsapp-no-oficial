@@ -20,14 +20,14 @@ export function serializeWid(value: unknown): string | null {
 
 // Conversas 1:1 com pessoas. Status (status@broadcast), listas de
 // transmissão, canais (@newsletter) e grupos (@g.us) usam o mesmo pipeline de
-// mensagens mas ficam de fora. "@lid" (id de privacidade do WhatsApp) entra
-// aqui só para tentarmos descobrir o número real (resolveCanonicalChatId).
+// mensagens mas ficam de fora. "@lid" (id de privacidade do WhatsApp) é a
+// mesma pessoa sem o número revelado: a conversa é salva no @lid e migra para
+// o @c.us quando o número aparece (resolveContactChatId).
 export function isIndividualChat(chatId: string): boolean {
   return chatId.endsWith("@c.us") || chatId.endsWith("@lid");
 }
 
-// Só contatos com número de telefone (5511999999999@c.us) são coletados.
-// Um @lid cujo número o WhatsApp não revela é ignorado.
+// Contato com número de telefone (5511999999999@c.us).
 export function isPhoneChat(chatId: string): boolean {
   return /^\d{8,}@c\.us$/.test(chatId);
 }
