@@ -1,7 +1,7 @@
 """
 Handlers das filas do AI-Worker.
 
-<AGENT_NAME>.message.process (publicada pelo backend quando um contato com agentActive=true
+<NAME_QUEUE>.message.process (publicada pelo backend quando um contato com agentActive=true
 manda mensagem e a organização tem um agente ativo com context):
 
 {

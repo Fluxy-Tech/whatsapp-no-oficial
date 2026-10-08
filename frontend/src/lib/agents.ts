@@ -27,6 +27,10 @@ export type Agent = {
   id: string;
   name: string;
   active: boolean;
+  /** Queue of the AI worker (NAME_QUEUE in worker-agentes/<agente>/.env), e.g. "iris". */
+  nameQueue: string;
+  /** Full queue the replies go to: "<nameQueue>.message.process". */
+  queue: string;
   context: string;
   tokenOpenAi: SecretInfo;
   tokenAdk: SecretInfo;
@@ -60,6 +64,16 @@ export type Agent = {
 };
 
 export type AgentsResponse = { activeAgentId: string | null; agents: Agent[] };
+
+/** Same rule as the backend (agentQueueKey): "Íris" -> "iris", "Agente Vendas" -> "agente-vendas". */
+export function queueKey(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 export function documentName(url: string) {
   try {

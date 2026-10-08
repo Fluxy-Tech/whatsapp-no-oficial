@@ -19,9 +19,9 @@ export const AI_QUEUES = {
 } as const;
 
 // backend -> AI worker: generate a reply for a contact. Each agent has its own
-// queue, "<agent name>.message.process", named after the agent in use on the
+// queue, "<Agent.nameQueue>.message.process", for the agent in use on the
 // organization's number. The worker of that agent (worker-agentes/<agente>,
-// AGENT_NAME in its .env) declares and consumes it when it starts.
+// NAME_QUEUE in its .env) declares and consumes it when it starts.
 export const AGENT_REPLY_QUEUE_SUFFIX = ".message.process";
 
 /** "Íris" -> "iris", "Agente Vendas" -> "agente-vendas". Same rule as the workers' config.py. */
@@ -34,9 +34,9 @@ export function agentQueueKey(agentName: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-export function agentReplyQueue(agentName: string) {
-  const key = agentQueueKey(agentName);
-  if (!key) throw new Error(`Agent name "${agentName}" has no letters or digits to name its queue`);
+export function agentReplyQueue(nameQueue: string) {
+  const key = agentQueueKey(nameQueue);
+  if (!key) throw new Error(`Agent queue "${nameQueue}" has no letters or digits`);
   return `${key}${AGENT_REPLY_QUEUE_SUFFIX}`;
 }
 

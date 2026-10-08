@@ -2,7 +2,7 @@ import type { Agent, Metadado, Prisma } from "@prisma/client";
 import { describeSecret, decryptSecret, encryptSecret } from "../lib/crypto";
 import { whatsappEvents } from "../lib/events";
 import { prisma } from "../lib/prisma";
-import { AI_QUEUES, publish } from "../lib/rabbitmq";
+import { AGENT_REPLY_QUEUE_SUFFIX, AI_QUEUES, agentQueueKey, publish } from "../lib/rabbitmq";
 import { deleteIfStoredDocument, uploadAgentDocument } from "../lib/s3";
 
 export class AgentError extends Error {
@@ -38,6 +38,8 @@ export type SchedulingInput = {
 
 export type AgentInput = {
   name?: string;
+  /** Queue of the AI worker: "<nameQueue>.message.process". Empty on create = derived from the name. */
+  nameQueue?: string;
   active?: boolean;
   context?: string;
   /** undefined = keep, "" / null = remove, string = replace. */
@@ -86,6 +88,13 @@ function phoneNotificationOf(value: string | null | undefined) {
   return digits;
 }
 
+/** "Iris" -> "iris". Must match NAME_QUEUE in the worker's .env. */
+function nameQueueOf(value: string) {
+  const nameQueue = agentQueueKey(value);
+  if (!nameQueue) throw new AgentError(400, "Informe a fila do agente (letras e números, ex.: iris).");
+  return nameQueue;
+}
+
 function statusMap(agent: Agent): Record<string, DocumentStatus> {
   const value = agent.documentsStatus;
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, DocumentStatus>) : {};
@@ -102,6 +111,8 @@ export function agentView(agent: AgentWithMetadados, activeAgentId: string | nul
   return {
     id: agent.id,
     name: agent.name,
+    nameQueue: agent.nameQueue,
+    queue: `${agent.nameQueue}${AGENT_REPLY_QUEUE_SUFFIX}`,
     active: agent.active,
     context: agent.context,
     tokenOpenAi: describeSecret(agent.tokenOpenAi),
@@ -319,6 +330,7 @@ export async function createAgent(organizationId: string, input: AgentInput) {
     data: {
       organizationId,
       name,
+      nameQueue: nameQueueOf(input.nameQueue?.trim() ? input.nameQueue : name),
       active: input.active ?? true,
       context: input.context ?? "",
       tokenOpenAi: (await tokenUpdate("openai", input.tokenOpenAi)) ?? null,
@@ -356,6 +368,7 @@ export async function updateAgent(organizationId: string, agentId: string, input
     if (!input.name.trim()) throw new AgentError(400, "name cannot be empty");
     data.name = input.name.trim();
   }
+  if (input.nameQueue !== undefined) data.nameQueue = nameQueueOf(input.nameQueue);
   if (input.active !== undefined) data.active = input.active;
   if (input.context !== undefined) data.context = input.context;
   if (input.resetKeywords !== undefined) data.resetKeywords = normalizeResetKeywords(input.resetKeywords);

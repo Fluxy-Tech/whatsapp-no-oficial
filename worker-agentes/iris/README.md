@@ -1,6 +1,6 @@
 # AI-Worker Iris
 
-Worker Python (Google ADK + LangChain/pgvector) que responde os contatos do WhatsApp com o agente de IA configurado na plataforma. Atende o agente cadastrado na plataforma com o nome do `AGENT_NAME` do `.env` (`iris`): consome só a fila `iris.message.process`. A configuração do agente (prompt, tokens, metadados, documentos) chega no payload de cada mensagem.
+Worker Python (Google ADK + LangChain/pgvector) que responde os contatos do WhatsApp com o agente de IA configurado na plataforma. Atende os agentes da plataforma com **Fila do agente** igual ao `NAME_QUEUE` do `.env` (`iris`): consome só a fila `iris.message.process`. A configuração do agente (prompt, tokens, metadados, documentos) chega no payload de cada mensagem.
 
 Porta do healthcheck: **6804** (`GET /health`).
 
@@ -17,12 +17,12 @@ Porta do healthcheck: **6804** (`GET /health`).
 
 | Fila | De → Para | Conteúdo |
 | --- | --- | --- |
-| `<AGENT_NAME>.message.process` | backend → AI-Worker | `{ jobId, organizationId, agent, contact, messages }` (ver `src/services/queue/consumer.py`) |
+| `<NAME_QUEUE>.message.process` | backend → AI-Worker | `{ jobId, organizationId, agent, contact, messages }` (ver `src/services/queue/consumer.py`) |
 | `whatsapp.outbound` | AI-Worker → worker-whatsapp | resposta em texto, `externalId: "ai-<jobId>"` (reentregas não duplicam o envio) |
 | `ai.rag.ingest` | backend → AI-Worker | `{ action: "ingest" \| "delete", agentId, url, openaiToken }` |
 | `ai.rag.result` | AI-Worker → backend | `{ agentId, url, status: processing \| ready \| failed, chunks, error }` |
 
-As filas `ai.*` têm DLQ (`<fila>.dlq`). Falha ao gerar resposta (ex.: token do Google inválido ou sem crédito) manda o job para `<AGENT_NAME>.message.process.dlq` e o contato fica sem resposta.
+As filas `ai.*` têm DLQ (`<fila>.dlq`). Falha ao gerar resposta (ex.: token do Google inválido ou sem crédito) manda o job para `<NAME_QUEUE>.message.process.dlq` e o contato fica sem resposta.
 
 ## Tokens
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { BookOpen, Coins, Save, Trash2, UserRound, Workflow } from "lucide-react";
 import { TokenUsagePanel } from "@/components/agents/TokenUsagePanel";
 import { api } from "@/lib/api";
-import type { Agent, SecretInfo } from "@/lib/agents";
+import { queueKey, type Agent, type SecretInfo } from "@/lib/agents";
 import { stageOptions as toStageOptions, type Pipeline } from "@/lib/dashboard";
 import type { Member } from "@/lib/organization";
 import { TabsNav, type TabItem } from "@/components/ui/tabs-nav";
@@ -26,6 +26,7 @@ type TokenDraft = { value: string; remove: boolean };
 
 type Form = {
   name: string;
+  nameQueue: string;
   active: boolean;
   context: string;
   tokenOpenAi: TokenDraft;
@@ -49,6 +50,7 @@ const DEFAULT_NOTIFICATION_DESCRIPTION =
 function toForm(agent: Agent | null): Form {
   return {
     name: agent?.name ?? "",
+    nameQueue: agent?.nameQueue ?? "",
     active: agent?.active ?? true,
     context: agent?.context ?? "",
     tokenOpenAi: { value: "", remove: false },
@@ -186,6 +188,7 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
     try {
       const body = {
         name: form.name,
+        nameQueue: form.nameQueue,
         active: form.active,
         context: form.context,
         tokenOpenAi: tokenPayload(form.tokenOpenAi),
@@ -296,6 +299,28 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
                     />
                     {form.active ? "Ativo" : "Inativo"}
                   </label>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="agent-name-queue">Fila do agente</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="agent-name-queue"
+                      value={form.nameQueue}
+                      onChange={(e) => setForm({ ...form, nameQueue: e.target.value })}
+                      placeholder="Ex.: iris"
+                      required={Boolean(agent)}
+                      disabled={disabled}
+                      className="max-w-xs font-mono"
+                    />
+                    <span className="font-mono text-sm text-muted-foreground">.message.process</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    As mensagens deste agente vão para a fila{" "}
+                    <code className="font-mono">{queueKey(form.nameQueue || (agent ? "" : form.name)) || "…"}.message.process</code>
+                    . Use o mesmo valor do <code className="font-mono">NAME_QUEUE</code> no .env do worker do agente
+                    (worker-agentes). {agent ? "" : "Vazio = gerada a partir do nome."}
+                  </p>
                 </div>
 
                 <div className="space-y-2">

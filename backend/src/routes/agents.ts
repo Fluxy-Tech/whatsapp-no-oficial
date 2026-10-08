@@ -51,6 +51,7 @@ function parseInput(body: unknown): AgentInput {
   const input: AgentInput = {};
 
   if (raw.name !== undefined) input.name = String(raw.name);
+  if (raw.nameQueue !== undefined) input.nameQueue = String(raw.nameQueue ?? "");
   if (raw.active !== undefined) input.active = Boolean(raw.active);
   if (raw.context !== undefined) input.context = String(raw.context ?? "");
   if (raw.tokenOpenAi !== undefined) input.tokenOpenAi = raw.tokenOpenAi === null ? null : String(raw.tokenOpenAi);

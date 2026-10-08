@@ -54,22 +54,23 @@ SEAWEEDFS_S3_BUCKET = os.getenv("SEAWEEDFS_S3_BUCKET", "")
 # e com o worker-whatsapp (fila outbound).
 # ---------------------------------------------------------------------------
 
-# Nome do agente na plataforma (tela Agentes de IA), ex.: "iris". O backend
-# publica as mensagens do agente em uso no número em "<nome>.message.process";
-# este worker declara e consome essa fila ao subir. Mesma regra de nome do
-# backend (agentQueueKey em backend/src/lib/rabbitmq.ts): sem acento,
-# minúsculo e o que não for letra/número vira "-".
+# Fila do agente, ex.: "iris". É o campo "Fila do agente" (Agent.nameQueue) no
+# perfil do agente na plataforma: o backend publica as mensagens do agente em
+# uso no número em "<nameQueue>.message.process" e este worker declara e
+# consome essa fila ao subir. Mesma regra do backend (agentQueueKey em
+# backend/src/lib/rabbitmq.ts): sem acento, minúsculo e o que não for
+# letra/número vira "-". AGENT_NAME é aceito como nome antigo da variável.
 def _agent_key(name: str) -> str:
     sem_acento = "".join(c for c in unicodedata.normalize("NFD", name) if not unicodedata.combining(c))
     return re.sub(r"[^a-z0-9]+", "-", sem_acento.lower()).strip("-")
 
 
-AGENT_NAME = _agent_key(os.getenv("AGENT_NAME", ""))
-if not AGENT_NAME:
-    raise RuntimeError('AGENT_NAME não configurado no .env (nome do agente na plataforma, ex.: AGENT_NAME=iris)')
+NAME_QUEUE = _agent_key(os.getenv("NAME_QUEUE") or os.getenv("AGENT_NAME") or "")
+if not NAME_QUEUE:
+    raise RuntimeError("NAME_QUEUE não configurado no .env (a fila do agente na plataforma, ex.: NAME_QUEUE=iris)")
 
 # backend -> worker do agente: gerar resposta para um contato.
-QUEUE_AGENT_REPLY = f"{AGENT_NAME}.message.process"
+QUEUE_AGENT_REPLY = f"{NAME_QUEUE}.message.process"
 # backend -> AI-Worker: ingerir/apagar documentos do RAG.
 QUEUE_RAG_INGEST = "ai.rag.ingest"
 # AI-Worker -> backend: resultado da ingestão.

@@ -76,7 +76,7 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
 
   const jobId = randomUUID();
   await publish(
-    agentReplyQueue(agent.name),
+    agentReplyQueue(agent.nameQueue),
     {
       jobId,
       organizationId,

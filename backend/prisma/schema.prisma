@@ -300,6 +300,11 @@ model Agent {
   organizationId          String
   organization            Organization @relation("OrganizationAgents", fields: [organizationId], references: [id], onDelete: Cascade)
   name                    String
+  // Queue of the AI worker that answers for this agent: replies are published
+  // to "<nameQueue>.message.process" (e.g. "iris"). Must match NAME_QUEUE in
+  // the worker's .env (worker-agentes/<agente>). Normalized: no accents,
+  // lowercase, anything else becomes "-".
+  nameQueue               String
   active                  Boolean      @default(true)
   // Prompt the agent must follow.
   context                 String       @default("")
