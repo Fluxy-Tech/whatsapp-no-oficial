@@ -115,7 +115,15 @@ model Organization {
   // new message restarts the wait and joins the previous ones (one answer).
   messageWaitSeconds Int @default(20)
 
+  // Campaign automatic block: a contact who answers a campaign with exactly
+  // one of these phrases stops receiving campaigns (TargetBlockCampaign).
+  // Only evaluated while useWordsToBlockCampaign is true.
+  wordsToBlockCampaign    String[] @default([])
+  useWordsToBlockCampaign Boolean  @default(false)
+
   rolePermissions OrganizationRolePermission[]
+  campaigns       Campaign[]
+  campaignBlocks  TargetBlockCampaign[]
   pipelines       Pipeline[]
   leadCards       LeadCard[]
   calendarEvents  CalendarEvent[]
@@ -238,6 +246,8 @@ model Target {
   tokenUsages    AgentTokenUsage[]
   comments       LeadComment[]
   attachments    LeadAttachment[]
+  campaignSends  CampaignTarget[]
+  campaignBlock  TargetBlockCampaign?
 
   @@unique([organizationId, chatId])
   @@index([organizationId, lastMessageAt])
@@ -547,4 +557,129 @@ model LeadAttachment {
 
   @@index([targetId, createdAt])
   @@map("lead_attachment")
+}
+
+// ---------------------------------------------------------------------------
+// Campaigns: bulk sends of a hand-written message ({{1}}, {{2}}... variables)
+// through the organization's connected WhatsApp. Created here; sent in
+// batches by worker-campaing-no-oficia, which publishes each message to the
+// worker-whatsapp outbound queue. Delivery results come back through the
+// worker-whatsapp webhooks (routes/webhooks.ts -> campaign.service.ts).
+// ---------------------------------------------------------------------------
+
+model Campaign {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name          String
+  // Message with {{1}}, {{2}}... replaced per contact by the worker.
+  templateText  String
+  variableCount Int     @default(0)
+  // WhatsApp number connected when the campaign was created (display only).
+  phoneNumber   String?
+
+  // PROCESSING | COMPLETED
+  status       String @default("PROCESSING")
+  // CSV | MANUAL
+  dispatchType String @default("CSV")
+
+  // expectedContacts: size of the list. totalContacts: already handed to
+  // WhatsApp (queued). totalSent / totalFailures: confirmed by worker-whatsapp.
+  expectedContacts Int @default(0)
+  totalContacts    Int @default(0)
+  totalSent        Int @default(0)
+  totalFailures    Int @default(0)
+
+  createdByUserId String?
+  createdByName   String?
+  createdByEmail  String?
+
+  // Batches: batchSize contacts every batchIntervalMinutes. The worker only
+  // picks campaigns with active=true.
+  batchSize            Int
+  batchIntervalMinutes Int
+  active               Boolean   @default(true)
+  // Why the campaign is paused: "USER" | "DISCONNECTED". null while active.
+  pausedReason         String?
+  // Start chosen by the user (null = right away).
+  scheduledAt          DateTime?
+  // When the worker sends the next batch; null once nothing is left.
+  nextBatchAt          DateTime?
+
+  sentAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  targets         CampaignTarget[]
+  pendingContacts CampaignPendingContact[]
+
+  @@index([organizationId, sentAt])
+  // Worker query: status=PROCESSING, active=true, nextBatchAt <= now().
+  @@index([status, active, nextBatchAt])
+  @@map("campaign")
+}
+
+// A contact not sent yet. The worker consumes them by position and deletes
+// each one when it is sent (the result goes to CampaignTarget).
+model CampaignPendingContact {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  position   Int
+  // { phone, name?, variables: string[] }
+  contact    Json
+  createdAt  DateTime @default(now())
+
+  @@index([campaignId, position])
+  @@map("campaign_pending_contact")
+}
+
+// One row per contact the campaign was sent to.
+model CampaignTarget {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  // Linked when worker-whatsapp confirms the send (it resolves the real
+  // chatId, e.g. with or without the Brazilian 9th digit).
+  targetId   String?
+  target     Target?  @relation(fields: [targetId], references: [id], onDelete: SetNull)
+  phone      String
+  name       String?
+  // QUEUED | SENT | DELIVERED | READ | FAILED
+  status     String   @default("QUEUED")
+  error      String?
+  // externalId of the outbound message (correlates the webhooks).
+  messageId  String?  @unique
+  // Values of {{1}}, {{2}}... for this contact.
+  variables  Json     @default("[]")
+  // Message actually sent (variables already replaced).
+  text       String?
+
+  // First reply of the contact after this send.
+  respondedCampaign Boolean @default(false)
+  campaignResponse  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([campaignId])
+  @@index([targetId, respondedCampaign])
+  @@map("campaign_target")
+}
+
+// Contact blocked from campaigns: answered a campaign with one of
+// Organization.wordsToBlockCampaign. Checked before a new campaign is sent.
+model TargetBlockCampaign {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  targetId       String       @unique
+  target         Target       @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  // Phrase that caused the block.
+  reason         String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@map("target_block_campaign")
 }

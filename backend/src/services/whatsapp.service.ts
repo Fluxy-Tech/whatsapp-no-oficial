@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { prisma } from "../lib/prisma";
 import { publishOutboundMessage } from "../lib/rabbitmq";
 import { WorkerMessage, workerClient } from "../lib/worker-client";
+import { pauseCampaignsOnDisconnect } from "./campaign.service";
 import { listTargets, targetView, updateTarget, type TargetUpdate } from "./target.service";
 
 // The WhatsApp connection and the messages live in worker-whatsapp. Session
@@ -33,11 +34,14 @@ export async function recordSessionState(
   // The QR code only makes sense while waiting for it to be scanned.
   if (state.status && state.status !== "QRCODE" && state.qrCode === undefined) data.qrCode = null;
 
-  return prisma.whatsappSession.upsert({
+  const session = await prisma.whatsappSession.upsert({
     where: { organizationId },
     create: { organizationId, sessionName: sessionNameFor(organizationId), status: "STARTING", ...data },
     update: data,
   });
+  // Nothing can be sent while disconnected: running campaigns are paused.
+  if (state.status) await pauseCampaignsOnDisconnect(organizationId, state.status);
+  return session;
 }
 
 /** Sessions the worker must reopen when it (re)starts. */
@@ -73,6 +77,7 @@ export async function logoutWhatsappSession(organizationId: string) {
     where: { organizationId },
     data: { status: "DISCONNECTED", qrCode: null, phoneNumber: null, lastError: null },
   }).catch(() => recordSessionState(organizationId, { status: "DISCONNECTED", qrCode: null }));
+  await pauseCampaignsOnDisconnect(organizationId, "DISCONNECTED");
 }
 
 // Shapes the frontend already consumes ("contacts" for the chat list).

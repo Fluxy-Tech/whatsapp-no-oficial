@@ -13,6 +13,7 @@ import internalRouter from "./routes/internal";
 import organizationsRouter from "./routes/organizations";
 import dashboardRouter from "./routes/dashboard";
 import profileRouter from "./routes/profile";
+import campaignsRouter from "./routes/campaigns";
 import { AI_QUEUES, consume } from "./lib/rabbitmq";
 import { handleRagResult, type RagResult } from "./services/agent.service";
 import { setupSockets } from "./sockets";
@@ -32,6 +33,9 @@ app.all("/api/auth/*splat", toNodeHandler(auth));
 app.use("/api/webhooks", webhooksRouter);
 // Service-to-service routes (worker-whatsapp, AI-Worker).
 app.use("/api/internal", internalRouter);
+
+// Campaign contact lists (CSV) are bigger than the default 100kb JSON limit.
+app.use("/api/campaigns", express.json({ limit: "20mb" }), campaignsRouter);
 
 app.use(express.json());
 

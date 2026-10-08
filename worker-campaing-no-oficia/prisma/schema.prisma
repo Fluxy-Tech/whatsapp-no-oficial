@@ -1,0 +1,78 @@
+// Subconjunto do schema do backend do whatsapp-no-oficial (mesmo Postgres). As
+// migrations só existem em backend/prisma/migrations — qualquer mudança de
+// coluna precisa ser espelhada manualmente aqui. Rodar apenas `prisma generate`,
+// nunca `prisma migrate`. Sem relações: o worker só lê/escreve estas tabelas.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model WhatsappSession {
+  id             String   @id
+  organizationId String   @unique
+  sessionName    String   @unique
+  status         String
+  phoneNumber    String?
+  updatedAt      DateTime @updatedAt
+
+  @@map("whatsapp_session")
+}
+
+model Campaign {
+  id                   String    @id
+  organizationId       String
+  name                 String
+  templateText         String
+  variableCount        Int
+  status               String
+  dispatchType         String
+  expectedContacts     Int
+  totalContacts        Int
+  totalSent            Int
+  totalFailures        Int
+  batchSize            Int
+  batchIntervalMinutes Int
+  active               Boolean
+  pausedReason         String?
+  scheduledAt          DateTime?
+  nextBatchAt          DateTime?
+  updatedAt            DateTime  @updatedAt
+
+  @@map("campaign")
+}
+
+model CampaignPendingContact {
+  id         String   @id
+  campaignId String
+  position   Int
+  /// { phone, name?, variables: string[] }
+  contact    Json
+  createdAt  DateTime
+
+  @@map("campaign_pending_contact")
+}
+
+model CampaignTarget {
+  id                String   @id @default(cuid())
+  campaignId        String
+  targetId          String?
+  phone             String
+  name              String?
+  /// QUEUED | SENT | DELIVERED | READ | FAILED
+  status            String   @default("QUEUED")
+  error             String?
+  messageId         String?  @unique
+  variables         Json     @default("[]")
+  text              String?
+  respondedCampaign Boolean  @default(false)
+  campaignResponse  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("campaign_target")
+}

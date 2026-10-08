@@ -8,9 +8,9 @@ Documentação do modelo de dados: [`backend/prisma/README.md`](./backend/prisma
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado e **em execução** (o Compose precisa do daemon ativo).
 - Nenhuma outra dependência precisa ser instalada na máquina — Node, dependências do backend/frontend e o Chromium do wppconnect são todos instalados dentro dos containers.
-- Portas livres em `localhost`: `6801` (worker-whatsapp), `6802` (backend), `6803` (frontend), `6804` (AI-Worker).
+- Portas livres em `localhost`: `6801` (worker-whatsapp), `6802` (backend), `6803` (frontend), `6804` (AI-Worker), `6805` (worker de campanhas).
 
-> As aplicações usam portas sequenciais a partir da `6801`: worker `6801`, backend `6802`, frontend `6803`, AI-Worker `6804`. Uma nova aplicação deve usar a próxima livre (`6805`).
+> As aplicações usam portas sequenciais a partir da `6801`: worker `6801`, backend `6802`, frontend `6803`, AI-Worker `6804`, worker de campanhas `6805`. Uma nova aplicação deve usar a próxima livre (`6806`).
 
 ## Configuração antes de subir
 
@@ -69,6 +69,7 @@ docker compose exec backend npx prisma studio
 ```
 backend/     API Node + TS (Express, Prisma, better-auth, Socket.IO) — recebe o webhook do worker e repassa ao front
 worker-whatsapp/  conexão WPPConnect + filas RabbitMQ + histórico MongoDB + mídia S3 (ver worker-whatsapp/README.md)
+worker-campaing-no-oficia/ disparo de campanhas em lotes (publica na fila outbound do worker-whatsapp)
 AI-Worker/piloto/ agentes de IA (Google ADK + RAG no pgvector) que respondem os contatos (ver AI-Worker/piloto/README.md)
 frontend/    React + Vite + Tailwind + shadcn
 docker-compose.yml   orquestra postgres + backend + worker-whatsapp + ai-worker + frontend
@@ -99,3 +100,17 @@ contato manda mensagem -> worker-whatsapp (mensagem no MongoDB) -> webhook -> ba
   -> metadados coletados -> rota interna do backend -> extras do target (Postgres) -> tela
 documentos do agente -> S3 -> fila ai.rag.ingest -> AI-Worker -> pgvector -> ai.rag.result -> status na tela
 ```
+
+## Campanhas
+
+Tela **Campanhas** (módulo `campanhas` nas permissões): disparo em massa (CSV) ou manual de uma mensagem escrita na hora, com variáveis `{{1}}`, `{{2}}`... — o CSV tem as colunas `telefone`, `nome` e `variavel1..N`. O envio sai sempre pelo WhatsApp conectado da organização; se ele desconectar, as campanhas em andamento são pausadas (retomar exige o WhatsApp conectado).
+
+```
+backend cria Campaign + CampaignPendingContact (Postgres)
+  worker-campaing-no-oficia (scheduler) a cada lote: batchSize contatos, a cada batchIntervalMinutes
+  -> CampaignTarget QUEUED + fila whatsapp.outbound (externalId "campaign:<uuid>") -> worker-whatsapp envia
+  -> webhooks message.sent / message.ack / message.failed -> backend atualiza CampaignTarget (SENT/DELIVERED/READ/FAILED)
+contato responde -> message.received -> resposta registrada; frase de bloqueio -> TargetBlockCampaign
+```
+
+O worker de campanhas usa o mesmo `DATABASE_URL`, `RABBITMQ_URL` e `RABBITMQ_QUEUE_PREFIX` do backend (ver `worker-campaing-no-oficia/.env.example`); as migrations ficam só no backend.

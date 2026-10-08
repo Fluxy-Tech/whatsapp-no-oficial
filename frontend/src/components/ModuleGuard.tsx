@@ -10,6 +10,7 @@ export const MODULE_PATHS: Record<Module, string> = {
   crm: "/dashboard/quadro",
   conversas: "/dashboard/conversas",
   leads: "/dashboard/leads",
+  campanhas: "/dashboard/campanhas",
   agentes: "/dashboard/agentes",
   configuracoes: "/dashboard/configuracoes",
 };

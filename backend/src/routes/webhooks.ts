@@ -2,6 +2,12 @@ import { createHmac, timingSafeEqual } from "crypto";
 import express, { Router } from "express";
 import { whatsappEvents } from "../lib/events";
 import { handleIncomingMessage } from "../services/ai-dispatcher.service";
+import {
+  handleCampaignResponse,
+  onCampaignMessageAck,
+  onCampaignMessageFailed,
+  onCampaignMessageSent,
+} from "../services/campaign.service";
 import { onLeadMessage } from "../services/kanban.service";
 import { mergeLidTarget, targetView, upsertTarget, type ContactSnapshot } from "../services/target.service";
 import { recordSessionState } from "../services/whatsapp.service";
@@ -73,7 +79,14 @@ async function dispatch(payload: WorkerWebhook) {
         messageAt: data.message.timestamp,
       });
       if (!target) break;
+      if (event === "message.sent") {
+        // Campaign sends: confirmed by WhatsApp (status + contact link).
+        await onCampaignMessageSent(data.message, target);
+      }
       if (event === "message.received") {
+        handleCampaignResponse(organizationId, target, data.message.body ?? data.message.caption ?? "").catch((error) =>
+          console.error(`Failed to record the campaign response of ${target.chatId}:`, error),
+        );
         handleIncomingMessage(organizationId, data.message, target).catch((error) =>
           console.error(`Failed to queue ${target.chatId} for the AI agent:`, error),
         );
@@ -91,6 +104,7 @@ async function dispatch(payload: WorkerWebhook) {
       break;
     }
     case "message.ack":
+      await onCampaignMessageAck(data.externalId, data.status);
       whatsappEvents.emit("message-ack", {
         organizationId,
         chatId: data.chatId,
@@ -100,6 +114,7 @@ async function dispatch(payload: WorkerWebhook) {
       });
       break;
     case "message.failed":
+      await onCampaignMessageFailed(data.externalId, data.error);
       whatsappEvents.emit("message-failed", {
         organizationId,
         externalId: data.externalId,

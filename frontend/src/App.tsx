@@ -16,6 +16,8 @@ import { ConversationsPage } from "@/pages/ConversationsPage";
 import { LeadsPage } from "@/pages/LeadsPage";
 import { AgentsPage } from "@/pages/AgentsPage";
 import { AgentDetailPage } from "@/pages/AgentDetailPage";
+import { CampaignsPage } from "@/pages/CampaignsPage";
+import { CampaignDetailPage } from "@/pages/CampaignDetailPage";
 
 export function App() {
   return (
@@ -47,6 +49,8 @@ export function App() {
         <Route path="calendario" element={<ModuleGuard module="crm"><CalendarPage /></ModuleGuard>} />
         <Route path="leads" element={<ModuleGuard module="leads"><LeadsPage /></ModuleGuard>} />
         <Route path="lead/:id" element={<ModuleGuard module="leads"><LeadDetailPage /></ModuleGuard>} />
+        <Route path="campanhas" element={<ModuleGuard module="campanhas"><CampaignsPage /></ModuleGuard>} />
+        <Route path="campanhas/:id" element={<ModuleGuard module="campanhas"><CampaignDetailPage /></ModuleGuard>} />
         <Route path="agentes" element={<ModuleGuard module="agentes"><AgentsPage /></ModuleGuard>} />
         <Route path="agentes/:id" element={<ModuleGuard module="agentes"><AgentDetailPage /></ModuleGuard>} />
         <Route path="configuracoes" element={<ModuleGuard module="configuracoes"><SettingsPage /></ModuleGuard>} />

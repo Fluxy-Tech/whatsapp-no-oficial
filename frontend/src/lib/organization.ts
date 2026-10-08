@@ -3,7 +3,7 @@ export type AssignableRole = Exclude<Role, "admin">;
 export type ConfigurableRole = "supervisor" | "atendente";
 
 /** dashboard = reports; crm = board (quadro) and calendar. */
-export type Module = "dashboard" | "crm" | "conversas" | "leads" | "agentes" | "configuracoes";
+export type Module = "dashboard" | "crm" | "conversas" | "leads" | "campanhas" | "agentes" | "configuracoes";
 export type AccessLevel = "none" | "view" | "edit";
 export type Permissions = Record<Module, AccessLevel>;
 
@@ -22,6 +22,7 @@ export const MODULE_LABELS: Record<Module, string> = {
   crm: "CRM (Quadro e Calendário)",
   conversas: "Conversas",
   leads: "Leads",
+  campanhas: "Campanhas",
   agentes: "Agentes de IA",
   configuracoes: "Configurações",
 };

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+generated/
+.env
+*.log
+.env-producao
+.env.sturnus.bak
+Campaign-Worker/

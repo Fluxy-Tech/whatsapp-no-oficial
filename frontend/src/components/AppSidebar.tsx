@@ -10,6 +10,7 @@ import {
   KanbanSquare,
   LayoutDashboard,
   LogOut,
+  Megaphone,
   MessageSquare,
   Settings,
   Target,
@@ -49,6 +50,13 @@ const navItems: (NavLink | NavGroup)[] = [
   { label: "Conversas", href: "/dashboard/conversas", icon: MessageSquare, module: "conversas" },
   // /dashboard/lead/:id is a lead page too.
   { label: "Leads", href: "/dashboard/leads", icon: Target, module: "leads", match: ["/dashboard/lead/"] },
+  {
+    label: "Campanhas",
+    href: "/dashboard/campanhas",
+    icon: Megaphone,
+    module: "campanhas",
+    match: ["/dashboard/campanhas/"],
+  },
   { label: "Agentes de IA", href: "/dashboard/agentes", icon: Bot, module: "agentes", match: ["/dashboard/agentes/"] },
   { label: "Configurações", href: "/dashboard/configuracoes", icon: Settings, module: "configuracoes" },
 ];

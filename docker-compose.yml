@@ -41,6 +41,19 @@ services:
     shm_size: "1gb"
     command: sh -c "npm run dev"
 
+  # Disparo de campanhas em lotes: publica as mensagens na fila outbound do worker-whatsapp.
+  worker-campaign:
+    build:
+      context: ./worker-campaing-no-oficia
+    container_name: sturnus-worker-campaign
+    restart: unless-stopped
+    env_file:
+      - ./worker-campaing-no-oficia/.env
+    environment:
+      PORT: 6805
+    ports:
+      - "6805:6805"
+
   ai-worker:
     build:
       context: ./AI-Worker/piloto

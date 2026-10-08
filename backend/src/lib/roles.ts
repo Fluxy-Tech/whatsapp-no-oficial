@@ -19,7 +19,7 @@ export const CONFIGURABLE_ROLES = ["supervisor", "atendente"] as const;
 export type ConfigurableRole = (typeof CONFIGURABLE_ROLES)[number];
 
 // dashboard = reports; crm = board (quadro) and calendar.
-export const MODULES = ["dashboard", "crm", "conversas", "leads", "agentes", "configuracoes"] as const;
+export const MODULES = ["dashboard", "crm", "conversas", "leads", "campanhas", "agentes", "configuracoes"] as const;
 export type Module = (typeof MODULES)[number];
 
 export const ACCESS_LEVELS = ["none", "view", "edit"] as const;
@@ -32,14 +32,31 @@ const FULL_ACCESS: Permissions = {
   crm: "edit",
   conversas: "edit",
   leads: "edit",
+  campanhas: "edit",
   agentes: "edit",
   configuracoes: "edit",
 };
 
 /** Used until the gerente changes them. */
 export const DEFAULT_PERMISSIONS: Record<ConfigurableRole, Permissions> = {
-  supervisor: { dashboard: "view", crm: "edit", conversas: "edit", leads: "edit", agentes: "view", configuracoes: "view" },
-  atendente: { dashboard: "view", crm: "edit", conversas: "edit", leads: "view", agentes: "none", configuracoes: "none" },
+  supervisor: {
+    dashboard: "view",
+    crm: "edit",
+    conversas: "edit",
+    leads: "edit",
+    campanhas: "edit",
+    agentes: "view",
+    configuracoes: "view",
+  },
+  atendente: {
+    dashboard: "view",
+    crm: "edit",
+    conversas: "edit",
+    leads: "view",
+    campanhas: "none",
+    agentes: "none",
+    configuracoes: "none",
+  },
 };
 
 const LEVEL_RANK: Record<AccessLevel, number> = { none: 0, view: 1, edit: 2 };
@@ -78,5 +95,13 @@ export function permissionsFor(role: string, stored: Partial<Record<Configurable
   if (isManagerRole(role)) return { ...FULL_ACCESS };
   if (isConfigurableRole(role)) return normalizePermissions(role, stored[role]);
   // Unknown/legacy role: no access until the gerente fixes it.
-  return { dashboard: "none", crm: "none", conversas: "none", leads: "none", agentes: "none", configuracoes: "none" };
+  return {
+    dashboard: "none",
+    crm: "none",
+    conversas: "none",
+    leads: "none",
+    campanhas: "none",
+    agentes: "none",
+    configuracoes: "none",
+  };
 }
