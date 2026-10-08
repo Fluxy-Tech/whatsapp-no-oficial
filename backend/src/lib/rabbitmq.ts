@@ -10,17 +10,38 @@ const RECONNECT_DELAY_MS = 5_000;
 export const OUTBOUND_QUEUE = `${QUEUE_PREFIX}.outbound`;
 
 // AI-Worker queues. Durable with a "<queue>.dlq" dead-letter queue; the
-// AI-Worker declares them with the same arguments (see AI-Worker/piloto/src/config.py).
+// workers declare them with the same arguments (see worker-agentes/<agente>/src/config.py).
 export const AI_QUEUES = {
-  /** backend -> AI-Worker: generate a reply for a contact. */
-  reply: "ai.agent.reply",
   /** backend -> AI-Worker: ingest/delete RAG documents in pgvector. */
   rag: "ai.rag.ingest",
   /** AI-Worker -> backend: result of a RAG ingestion. */
   ragResult: "ai.rag.result",
 } as const;
 
+// backend -> AI worker: generate a reply for a contact. Each agent has its own
+// queue, "<agent name>.message.process", named after the agent in use on the
+// organization's number. The worker of that agent (worker-agentes/<agente>,
+// AGENT_NAME in its .env) declares and consumes it when it starts.
+export const AGENT_REPLY_QUEUE_SUFFIX = ".message.process";
+
+/** "Íris" -> "iris", "Agente Vendas" -> "agente-vendas". Same rule as the workers' config.py. */
+export function agentQueueKey(agentName: string) {
+  return agentName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export function agentReplyQueue(agentName: string) {
+  const key = agentQueueKey(agentName);
+  if (!key) throw new Error(`Agent name "${agentName}" has no letters or digits to name its queue`);
+  return `${key}${AGENT_REPLY_QUEUE_SUFFIX}`;
+}
+
 const AI_QUEUE_NAMES = new Set<string>(Object.values(AI_QUEUES));
+const isAiQueue = (queue: string) => AI_QUEUE_NAMES.has(queue) || queue.endsWith(AGENT_REPLY_QUEUE_SUFFIX);
 
 export type OutboundMessage = {
   organizationId: string;
@@ -46,7 +67,7 @@ let reconnectTimer: NodeJS.Timeout | null = null;
 const startedOn = new WeakMap<Consumer, ChannelModel>();
 
 async function assertQueue(channel: ConfirmChannel, queue: string) {
-  if (!AI_QUEUE_NAMES.has(queue)) {
+  if (!isAiQueue(queue)) {
     await channel.assertQueue(queue, { durable: true });
     return;
   }
@@ -115,8 +136,22 @@ function getConnection() {
   return connectionPromise;
 }
 
+// Agent queues are declared on first use: publishing to a queue that doesn't
+// exist yet (agent worker not started) would drop the message.
+const declaredAgentQueues = new WeakMap<ConfirmChannel, Set<string>>();
+
+async function ensureAgentQueue(channel: ConfirmChannel, queue: string) {
+  if (!queue.endsWith(AGENT_REPLY_QUEUE_SUFFIX)) return;
+  let declared = declaredAgentQueues.get(channel);
+  if (!declared) declaredAgentQueues.set(channel, (declared = new Set()));
+  if (declared.has(queue)) return;
+  await assertQueue(channel, queue);
+  declared.add(queue);
+}
+
 export async function publish(queue: string, payload: unknown, messageId?: string) {
   const { channel } = await getConnection();
+  await ensureAgentQueue(channel, queue);
 
   await new Promise<void>((resolve, reject) => {
     channel.sendToQueue(

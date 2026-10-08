@@ -1,6 +1,8 @@
 """Configuração do AI-Worker (lida do .env uma vez, no import)."""
 
 import os
+import re
+import unicodedata
 
 from dotenv import load_dotenv
 
@@ -52,8 +54,22 @@ SEAWEEDFS_S3_BUCKET = os.getenv("SEAWEEDFS_S3_BUCKET", "")
 # e com o worker-whatsapp (fila outbound).
 # ---------------------------------------------------------------------------
 
-# backend -> AI-Worker: gerar resposta para um contato.
-QUEUE_AGENT_REPLY = "ai.agent.reply"
+# Nome do agente na plataforma (tela Agentes de IA), ex.: "iris". O backend
+# publica as mensagens do agente em uso no número em "<nome>.message.process";
+# este worker declara e consome essa fila ao subir. Mesma regra de nome do
+# backend (agentQueueKey em backend/src/lib/rabbitmq.ts): sem acento,
+# minúsculo e o que não for letra/número vira "-".
+def _agent_key(name: str) -> str:
+    sem_acento = "".join(c for c in unicodedata.normalize("NFD", name) if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", "-", sem_acento.lower()).strip("-")
+
+
+AGENT_NAME = _agent_key(os.getenv("AGENT_NAME", ""))
+if not AGENT_NAME:
+    raise RuntimeError('AGENT_NAME não configurado no .env (nome do agente na plataforma, ex.: AGENT_NAME=iris)')
+
+# backend -> worker do agente: gerar resposta para um contato.
+QUEUE_AGENT_REPLY = f"{AGENT_NAME}.message.process"
 # backend -> AI-Worker: ingerir/apagar documentos do RAG.
 QUEUE_RAG_INGEST = "ai.rag.ingest"
 # AI-Worker -> backend: resultado da ingestão.
@@ -61,6 +77,6 @@ QUEUE_RAG_RESULT = "ai.rag.result"
 # AI-Worker -> worker-whatsapp: mensagem a enviar (declarada sem argumentos pelo worker).
 QUEUE_WHATSAPP_OUTBOUND = f"{os.getenv('WHATSAPP_QUEUE_PREFIX', 'whatsapp')}.outbound"
 
-# Filas "ai.*" têm DLQ "<fila>.dlq" — os argumentos precisam ser idênticos aos
+# A fila do agente e as "ai.*" têm DLQ "<fila>.dlq" — os argumentos precisam ser idênticos aos
 # usados pelo backend, senão o RabbitMQ recusa a declaração.
 AI_QUEUES = (QUEUE_AGENT_REPLY, QUEUE_RAG_INGEST, QUEUE_RAG_RESULT)

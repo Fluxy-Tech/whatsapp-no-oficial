@@ -1,7 +1,7 @@
 """
 Handlers das filas do AI-Worker Breno (mesmo contrato do AI-Worker piloto).
 
-ai.agent.reply (publicada pelo backend quando um contato com agentActive=true
+<AGENT_NAME>.message.process (publicada pelo backend quando um contato com agentActive=true
 manda mensagem e a organização tem um agente ativo com context):
 
 {

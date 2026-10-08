@@ -6,7 +6,7 @@ Uma instância atende **todos** os agentes: a configuração de cada um (prompt,
 
 Porta do healthcheck: **6804** (`GET /health`).
 
-> **Rode só um AI-Worker por vez.** O piloto e o Breno consomem a mesma fila (`ai.agent.reply`); com os dois no ar, cada mensagem é respondida por um deles ao acaso.
+> Cada worker consome só a fila do seu agente (`<AGENT_NAME>.message.process`, com `AGENT_NAME` no `.env`), então vários workers podem ficar no ar ao mesmo tempo. O `AGENT_NAME` precisa ser o nome do agente cadastrado na plataforma.
 
 ## Arquitetura do agente
 
@@ -72,12 +72,12 @@ O núcleo não precisa mudar.
 
 | Fila | De → Para | Conteúdo |
 | --- | --- | --- |
-| `ai.agent.reply` | backend → AI-Worker | `{ jobId, organizationId, agent, contact, messages }` (ver `src/services/queue/consumer.py`) |
+| `<AGENT_NAME>.message.process` | backend → AI-Worker | `{ jobId, organizationId, agent, contact, messages }` (ver `src/services/queue/consumer.py`) |
 | `whatsapp.outbound` | AI-Worker → worker-whatsapp | texto; `externalId: "ai-<jobId>"` (partes seguintes: `ai-<jobId>-1`, `-2`...) |
 | `ai.rag.ingest` | backend → AI-Worker | `{ action: "ingest" \| "delete", agentId, url, openaiToken }` |
 | `ai.rag.result` | AI-Worker → backend | `{ agentId, url, status: processing \| ready \| failed, chunks, error }` |
 
-As filas `ai.*` têm DLQ (`<fila>.dlq`). Falha ao gerar resposta (ex.: token da OpenAI inválido ou sem crédito) manda o job para `ai.agent.reply.dlq` e o contato fica sem resposta.
+As filas `ai.*` têm DLQ (`<fila>.dlq`). Falha ao gerar resposta (ex.: token da OpenAI inválido ou sem crédito) manda o job para `<AGENT_NAME>.message.process.dlq` e o contato fica sem resposta.
 
 ## Rodando
 

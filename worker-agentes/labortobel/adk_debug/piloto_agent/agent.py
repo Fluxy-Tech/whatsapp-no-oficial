@@ -1,5 +1,5 @@
 """Adaptador só para `adk web` — o worker monta o agente a cada mensagem
-(src/services/adk/runner.py) com agent/contact vindos da fila ai.agent.reply.
+(src/services/adk/runner.py) com agent/contact vindos da fila <AGENT_NAME>.message.process.
 Aqui expomos um root_agent fixo com dados de teste, para testar o prompt e a
 coleta de metadados sem RabbitMQ, banco de sessões nem worker-whatsapp.
 """
@@ -15,7 +15,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 
 from src.services.adk.agent import build_agent
 
-# Mesmo formato de "agent" no payload da fila ai.agent.reply.
+# Mesmo formato de "agent" no payload da fila <AGENT_NAME>.message.process.
 _agent = {
     "id": "agent-teste-local",
     "name": "Ana",

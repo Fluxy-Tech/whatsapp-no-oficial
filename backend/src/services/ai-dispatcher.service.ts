@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { decryptSecret } from "../lib/crypto";
 import { prisma } from "../lib/prisma";
-import { AI_QUEUES, publish } from "../lib/rabbitmq";
+import { agentReplyQueue, publish } from "../lib/rabbitmq";
 import type { Target } from "@prisma/client";
 import type { WorkerMessage } from "../lib/worker-client";
 import { canAnswer } from "./agent.service";
@@ -76,7 +76,7 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
 
   const jobId = randomUUID();
   await publish(
-    AI_QUEUES.reply,
+    agentReplyQueue(agent.name),
     {
       jobId,
       organizationId,

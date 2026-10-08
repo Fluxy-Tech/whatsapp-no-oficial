@@ -36,7 +36,7 @@ COPY . .
 
 EXPOSE 6804
 
-# worker.py cria as tabelas de sessão, sobe o healthcheck (porta PORT) e consome as filas ai.agent.reply
+# worker.py cria as tabelas de sessão, sobe o healthcheck (porta PORT) e consome as filas <AGENT_NAME>.message.process
 # (respostas dos agentes) e ai.rag.ingest (documentos do RAG). Uma instância
 # atende todos os agentes: a configuração de cada um vem no payload.
 CMD ["python", "worker.py"]

@@ -95,7 +95,7 @@ Cada organização pode ter vários agentes (tela **Agentes de IA**); o que esti
 ```
 contato manda mensagem -> worker-whatsapp (mensagem no MongoDB) -> webhook -> backend (contato/target no Postgres)
   backend (agente em uso + ativo + com prompt, target com agentActive) agrupa as mensagens por ~6s
-  -> fila ai.agent.reply -> AI-Worker (Gemini via ADK, coleta metadados, consulta RAG)
+  -> fila <nome do agente>.message.process -> worker do agente (worker-agentes/<agente>, AGENT_NAME no .env)
   -> fila whatsapp.outbound -> worker-whatsapp envia a resposta
   -> metadados coletados -> rota interna do backend -> extras do target (Postgres) -> tela
 documentos do agente -> S3 -> fila ai.rag.ingest -> AI-Worker -> pgvector -> ai.rag.result -> status na tela
