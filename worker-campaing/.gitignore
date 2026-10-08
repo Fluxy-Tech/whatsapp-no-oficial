@@ -6,3 +6,4 @@ generated/
 .env-producao
 .env.sturnus.bak
 Campaign-Worker/
+.env-producao.bak

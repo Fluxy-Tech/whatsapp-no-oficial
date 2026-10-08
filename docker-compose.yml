@@ -44,11 +44,11 @@ services:
   # Disparo de campanhas em lotes: publica as mensagens na fila outbound do worker-whatsapp.
   worker-campaign:
     build:
-      context: ./worker-campaing-no-oficia
+      context: ./worker-campaing
     container_name: sturnus-worker-campaign
     restart: unless-stopped
     env_file:
-      - ./worker-campaing-no-oficia/.env
+      - ./worker-campaing/.env
     environment:
       PORT: 6805
     ports:
