@@ -3,9 +3,9 @@ import { api } from "@/lib/api";
 import { useOrganization, usePermission } from "@/providers/OrganizationProvider";
 import { AgentFailureForm } from "@/components/settings/AgentFailureForm";
 import { MembersCard } from "@/components/settings/MembersCard";
-import { MessageWaitForm } from "@/components/settings/MessageWaitForm";
 import { NameForm } from "@/components/settings/NameForm";
 import { PermissionsCard } from "@/components/settings/PermissionsCard";
+import { SecondsSettingForm } from "@/components/settings/SecondsSettingForm";
 import { WhatsappConnectionCard } from "@/components/WhatsappConnectionCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -48,8 +48,25 @@ export function SettingsPage() {
             disabled={!canEdit || !activeOrganization}
             onSave={renameOrganization}
           />
-          <MessageWaitForm
+          <SecondsSettingForm
+            id="organization-message-wait"
+            field="messageWaitSeconds"
+            label="Tempo de espera por novas mensagens (segundos)"
+            help="O agente espera o contato ficar este tempo sem mandar mensagens antes de responder. Cada nova mensagem reinicia a contagem, e todas as mensagens recebidas no período são respondidas juntas, como uma pessoa lendo a conversa."
+            min={0}
+            max={600}
             initialValue={current?.organization.messageWaitSeconds ?? 20}
+            disabled={!canEdit || !current}
+            onSaved={refresh}
+          />
+          <SecondsSettingForm
+            id="organization-agent-message-delay"
+            field="agentMessageDelaySeconds"
+            label="Intervalo entre as mensagens do agente (segundos)"
+            help="Quando o agente divide a resposta em várias mensagens, ele espera este tempo depois de enviar cada uma antes de mandar a próxima. Use 0 para enviar todas de uma vez."
+            min={0}
+            max={60}
+            initialValue={current?.organization.agentMessageDelaySeconds ?? 0}
             disabled={!canEdit || !current}
             onSaved={refresh}
           />

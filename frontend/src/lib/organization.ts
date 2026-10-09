@@ -41,6 +41,8 @@ export type CurrentOrganization = {
     name: string;
     /** Seconds the agent waits for the contact to stop sending messages. */
     messageWaitSeconds: number;
+    /** Seconds the agent waits between the messages of one answer. */
+    agentMessageDelaySeconds: number;
     /** Sent to the contact when the agent fails to answer. */
     agentFailureMessage: string | null;
     /** Warned (contact's name and number) when the agent fails to answer. */

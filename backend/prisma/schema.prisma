@@ -115,6 +115,10 @@ model Organization {
   // new message restarts the wait and joins the previous ones (one answer).
   messageWaitSeconds Int @default(20)
 
+  // Seconds the agent waits between the messages of one answer (when it
+  // splits the answer into several WhatsApp messages). 0 = no wait.
+  agentMessageDelaySeconds Int @default(0)
+
   // Campaign automatic block: a contact who answers a campaign with exactly
   // one of these phrases stops receiving campaigns (TargetBlockCampaign).
   // Only evaluated while useWordsToBlockCampaign is true.

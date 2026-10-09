@@ -57,6 +57,7 @@ router.get("/current", requireMember, async (req, res) => {
       id: member.organizationId,
       name: organization?.name ?? "",
       messageWaitSeconds: organization?.messageWaitSeconds ?? 20,
+      agentMessageDelaySeconds: organization?.agentMessageDelaySeconds ?? 0,
       agentFailureMessage: organization?.agentFailureMessage ?? null,
       alertPhoneNumber: organization?.alertPhoneNumber ?? null,
     },
@@ -76,6 +77,7 @@ router.patch("/current/settings", requirePermission("configuracoes", "edit"), as
   res.json(
     await updateOrganizationSettings(organizationId(req), {
       messageWaitSeconds: body.messageWaitSeconds,
+      agentMessageDelaySeconds: body.agentMessageDelaySeconds,
       agentFailureMessage: body.agentFailureMessage,
       alertPhoneNumber: body.alertPhoneNumber,
     }),

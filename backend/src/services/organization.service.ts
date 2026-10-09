@@ -132,10 +132,12 @@ export async function ensureCanEnter(user: SessionUser, organizationId: string) 
 
 export const MESSAGE_WAIT_LIMITS = { min: 0, max: 600 };
 
+export const AGENT_MESSAGE_DELAY_LIMITS = { min: 0, max: 60 };
 export const AGENT_FAILURE_MESSAGE_MAX = 1000;
 
 export type OrganizationSettingsInput = {
   messageWaitSeconds?: unknown;
+  agentMessageDelaySeconds?: unknown;
   agentFailureMessage?: unknown;
   alertPhoneNumber?: unknown;
 };
@@ -152,7 +154,7 @@ function alertPhoneNumberOf(value: unknown) {
 
 /**
  * Company settings: how long the agent waits for the contact to stop typing,
- * and what happens when the agent fails to answer (message to the contact and
+ * the pause between the messages of one answer, and what happens when the agent fails to answer (message to the contact and
  * alert number).
  */
 export async function updateOrganizationSettings(organizationId: string, input: OrganizationSettingsInput) {
@@ -167,6 +169,14 @@ export async function updateOrganizationSettings(organizationId: string, input: 
     }
     data.messageWaitSeconds = seconds;
   }
+  if (input.agentMessageDelaySeconds !== undefined) {
+    const seconds = Number(input.agentMessageDelaySeconds);
+    const { min, max } = AGENT_MESSAGE_DELAY_LIMITS;
+    if (!Number.isInteger(seconds) || seconds < min || seconds > max) {
+      throw new OrganizationError(400, `O intervalo entre mensagens deve ser um número inteiro entre ${min} e ${max} segundos`);
+    }
+    data.agentMessageDelaySeconds = seconds;
+  }
   if (input.agentFailureMessage !== undefined) {
     const message = String(input.agentFailureMessage ?? "").trim();
     if (message.length > AGENT_FAILURE_MESSAGE_MAX) {
@@ -179,6 +189,7 @@ export async function updateOrganizationSettings(organizationId: string, input: 
   const organization = await prisma.organization.update({ where: { id: organizationId }, data });
   return {
     messageWaitSeconds: organization.messageWaitSeconds,
+    agentMessageDelaySeconds: organization.agentMessageDelaySeconds,
     agentFailureMessage: organization.agentFailureMessage,
     alertPhoneNumber: organization.alertPhoneNumber,
   };

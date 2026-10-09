@@ -1,20 +1,24 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-const MIN_SECONDS = 0;
-const MAX_SECONDS = 600;
-
-type MessageWaitFormProps = {
+type SecondsSettingFormProps = {
+  id: string;
+  /** Field of PATCH /api/organizations/current/settings. */
+  field: "messageWaitSeconds" | "agentMessageDelaySeconds";
+  label: string;
+  help: ReactNode;
+  min: number;
+  max: number;
   initialValue: number;
   disabled?: boolean;
   onSaved: () => Promise<void> | void;
 };
 
-/** How long the agent waits for the contact to stop typing before answering. */
-export function MessageWaitForm({ initialValue, disabled, onSaved }: MessageWaitFormProps) {
+/** A company setting measured in whole seconds (e.g. the agent's wait times). */
+export function SecondsSettingForm({ id, field, label, help, min, max, initialValue, disabled, onSaved }: SecondsSettingFormProps) {
   const [value, setValue] = useState(String(initialValue));
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -23,7 +27,7 @@ export function MessageWaitForm({ initialValue, disabled, onSaved }: MessageWait
   useEffect(() => setValue(String(initialValue)), [initialValue]);
 
   const seconds = Number(value);
-  const valid = value.trim() !== "" && Number.isInteger(seconds) && seconds >= MIN_SECONDS && seconds <= MAX_SECONDS;
+  const valid = value.trim() !== "" && Number.isInteger(seconds) && seconds >= min && seconds <= max;
   const unchanged = seconds === initialValue;
 
   async function handleSubmit(event: FormEvent) {
@@ -35,7 +39,7 @@ export function MessageWaitForm({ initialValue, disabled, onSaved }: MessageWait
     try {
       await api("/api/organizations/current/settings", {
         method: "PATCH",
-        body: JSON.stringify({ messageWaitSeconds: seconds }),
+        body: JSON.stringify({ [field]: seconds }),
       });
       await onSaved();
       setFeedback({ type: "success", text: "Alterações salvas." });
@@ -48,13 +52,13 @@ export function MessageWaitForm({ initialValue, disabled, onSaved }: MessageWait
 
   return (
     <form onSubmit={handleSubmit} className="space-y-2">
-      <Label htmlFor="organization-message-wait">Tempo de espera por novas mensagens (segundos)</Label>
+      <Label htmlFor={id}>{label}</Label>
       <div className="flex gap-2">
         <Input
-          id="organization-message-wait"
+          id={id}
           type="number"
-          min={MIN_SECONDS}
-          max={MAX_SECONDS}
+          min={min}
+          max={max}
           step={1}
           className="max-w-32"
           value={value}
@@ -71,9 +75,7 @@ export function MessageWaitForm({ initialValue, disabled, onSaved }: MessageWait
         )}
       </div>
       <p className="text-xs text-muted-foreground">
-        O agente espera o contato ficar este tempo sem mandar mensagens antes de responder. Cada nova mensagem reinicia a
-        contagem, e todas as mensagens recebidas no período são respondidas juntas, como uma pessoa lendo a conversa. De{" "}
-        {MIN_SECONDS} a {MAX_SECONDS} segundos.
+        {help} De {min} a {max} segundos.
       </p>
       {feedback && (
         <p className={feedback.type === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>

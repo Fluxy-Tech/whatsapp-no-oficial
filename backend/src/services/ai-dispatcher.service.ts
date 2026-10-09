@@ -80,8 +80,10 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
     {
       jobId,
       organizationId,
-      // Used by the worker when the agent fails to answer.
       organization: {
+        // Pause between the messages of one answer.
+        agentMessageDelaySeconds: organization.agentMessageDelaySeconds,
+        // Used when the agent fails to answer.
         agentFailureMessage: organization.agentFailureMessage,
         alertPhoneNumber: organization.alertPhoneNumber,
       },

@@ -6,7 +6,8 @@ manda mensagem e a organização tem um agente ativo com context):
 
 {
   "jobId", "organizationId",
-  "organization": {"agentFailureMessage": str | null, "alertPhoneNumber": str | null},
+  "organization": {"agentMessageDelaySeconds": int, "agentFailureMessage": str | null,
+                   "alertPhoneNumber": str | null},
   "agent": {"id", "name", "context", "tokenOpenAi", "tokenAdk",
             "metadados": [{"name", "descricao"}], "documents": [url], "resetKeywords": [str], "resetMessage": str,
             "numberPhoneNotification": str | null, "descriptionNotification": str, "splitMessages": bool,
@@ -16,7 +17,8 @@ manda mensagem e a organização tem um agente ativo com context):
 }
 
 A resposta vai para a fila outbound do worker-whatsapp, que envia no WhatsApp
-e notifica o backend. Os metadados coletados são gravados nos extras do
+e notifica o backend. Com organization.agentMessageDelaySeconds, as partes de
+uma resposta dividida saem com esse intervalo entre elas. Os metadados coletados são gravados nos extras do
 contato (rota interna do backend). Quando o turno completa todos os
 metadados e o agente tem numberPhoneNotification, uma mensagem gerada a partir
 de descriptionNotification também é enviada para esse número.
@@ -26,6 +28,7 @@ a organization.agentFailureMessage e o organization.alertPhoneNumber é avisado
 com o nome e o número do contato; a mensagem original continua indo para a DLQ.
 """
 
+import time
 import traceback
 import unicodedata
 
@@ -89,6 +92,32 @@ def _outbound(organization_id: str, contact: dict, job: dict, texto: str, parte:
     )
 
 
+# Mesmo limite do backend (AGENT_MESSAGE_DELAY_LIMITS).
+INTERVALO_MAXIMO_SEGUNDOS = 60
+
+
+def _intervalo_entre_mensagens(job: dict) -> float:
+    valor = (job.get("organization") or {}).get("agentMessageDelaySeconds")
+    try:
+        return min(max(float(valor or 0), 0.0), INTERVALO_MAXIMO_SEGUNDOS)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _publicar_com_intervalo(job: dict, publishes: list[tuple[str, dict]], publish_now) -> list[tuple[str, dict]]:
+    """Com intervalo configurado, publica já cada parte (menos a última) e
+    espera o intervalo antes da próxima; devolve o que falta publicar no Reply.
+    O intervalo fica aqui, por conversa, e não no worker-whatsapp: lá a fila
+    de envio é única e uma espera seguraria as mensagens de todas as empresas."""
+    intervalo = _intervalo_entre_mensagens(job)
+    if not intervalo or len(publishes) < 2:
+        return publishes
+    for destino, payload in publishes[:-1]:
+        publish_now(destino, payload)
+        time.sleep(intervalo)
+    return publishes[-1:]
+
+
 def _resetar(job: dict, organization_id: str, agent: dict, contact: dict) -> Reply:
     """Encerra a conversa: apaga o histórico (sessões do ADK) e os extras do
     contato e manda a frase de reset do agente. A próxima mensagem começa do zero."""
@@ -109,13 +138,13 @@ def handle_agent_reply(job: dict, publish_now) -> Reply:
         raise ValueError("Payload sem organizationId/contact.chatId/agent.id")
 
     try:
-        return _atender(job, organization_id, agent, contact, messages)
+        return _atender(job, organization_id, agent, contact, messages, publish_now)
     except Exception as error:
         _avisar_falha(job, organization_id, agent, contact, error, publish_now)
         raise
 
 
-def _atender(job: dict, organization_id: str, agent: dict, contact: dict, messages: list[dict]) -> Reply:
+def _atender(job: dict, organization_id: str, agent: dict, contact: dict, messages: list[dict], publish_now) -> Reply:
     # Palavra de reset: determinístico, roda antes do LLM e não depende do modelo.
     if _pediu_reset(messages, agent):
         return _resetar(job, organization_id, agent, contact)
@@ -129,7 +158,7 @@ def _atender(job: dict, organization_id: str, agent: dict, contact: dict, messag
     _log(job, f"agente '{agent.get('name')}' respondendo: {pergunta[:200]!r}")
     uso = UsoTokens()
     try:
-        return _responder(job, organization_id, agent, contact, pergunta, uso)
+        return _responder(job, organization_id, agent, contact, pergunta, uso, publish_now)
     finally:
         # Mesmo se algo falhar depois, os tokens já gastos ficam registrados.
         uso.enviar(agent["id"])
@@ -180,7 +209,9 @@ def _texto_alerta(agent: dict, contact: dict, error: Exception, mensagem_enviada
     return "\n".join(linhas)
 
 
-def _responder(job: dict, organization_id: str, agent: dict, contact: dict, pergunta: str, uso: UsoTokens) -> Reply:
+def _responder(
+    job: dict, organization_id: str, agent: dict, contact: dict, pergunta: str, uso: UsoTokens, publish_now
+) -> Reply:
     # As ferramentas de agendamento precisam saber de qual organização é a agenda.
     resultado = gerar_resposta(pergunta, {**agent, "organizationId": organization_id}, contact, uso)
     _log(job, f"resposta: {resultado.texto[:200]!r} extras: {resultado.extras_coletados}")
@@ -197,6 +228,7 @@ def _responder(job: dict, organization_id: str, agent: dict, contact: dict, perg
     # Publicadas em ordem; o worker-whatsapp envia uma por vez (prefetch 1).
     partes = partes_da_resposta(resultado.texto, bool(agent.get("splitMessages")))
     publishes = [_outbound(organization_id, contact, job, texto, i) for i, texto in enumerate(partes)]
+    publishes = _publicar_com_intervalo(job, publishes, publish_now)
 
     notificacao = _notificacao(job, organization_id, agent, contact, resultado, uso)
     if notificacao:
