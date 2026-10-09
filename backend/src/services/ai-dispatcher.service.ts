@@ -80,6 +80,11 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
     {
       jobId,
       organizationId,
+      // Used by the worker when the agent fails to answer.
+      organization: {
+        agentFailureMessage: organization.agentFailureMessage,
+        alertPhoneNumber: organization.alertPhoneNumber,
+      },
       agent: {
         id: agent.id,
         name: agent.name,

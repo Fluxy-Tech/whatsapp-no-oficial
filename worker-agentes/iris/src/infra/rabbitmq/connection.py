@@ -59,7 +59,7 @@ def _erro_de_api(error: Exception) -> bool:
     return type(error).__name__ in {"ClientError", "ServerError", "APIError", "AuthenticationError", "RateLimitError"}
 
 
-def _resumo_erro(error: Exception) -> str:
+def resumo_erro(error: Exception) -> str:
     # google.genai.errors.APIError tem code/status/message.
     code = getattr(error, "code", None)
     message = getattr(error, "message", None)
@@ -140,7 +140,7 @@ class Consumer:
 
                     threadsafe(finish)
                 except Exception as error:
-                    print(f"[{queue}] erro, mensagem enviada para {queue}.dlq: {_resumo_erro(error)}")
+                    print(f"[{queue}] erro, mensagem enviada para {queue}.dlq: {resumo_erro(error)}")
                     # Erro de API do Google/OpenAI (chave inválida, sem crédito...) já
                     # está explicado na linha acima; traceback só para erros inesperados.
                     if not _erro_de_api(error):

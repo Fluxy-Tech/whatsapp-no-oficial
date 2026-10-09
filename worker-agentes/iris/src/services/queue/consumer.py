@@ -6,6 +6,7 @@ manda mensagem e a organização tem um agente ativo com context):
 
 {
   "jobId", "organizationId",
+  "organization": {"agentFailureMessage": str | null, "alertPhoneNumber": str | null},
   "agent": {"id", "name", "context", "tokenOpenAi", "tokenAdk",
             "metadados": [{"name", "descricao"}], "documents": [url], "resetKeywords": [str], "resetMessage": str,
             "numberPhoneNotification": str | null, "descriptionNotification": str, "splitMessages": bool,
@@ -19,13 +20,17 @@ e notifica o backend. Os metadados coletados são gravados nos extras do
 contato (rota interna do backend). Quando o turno completa todos os
 metadados e o agente tem numberPhoneNotification, uma mensagem gerada a partir
 de descriptionNotification também é enviada para esse número.
+
+Se o agente falhar ao responder (ex.: modelo sobrecarregado), o contato recebe
+a organization.agentFailureMessage e o organization.alertPhoneNumber é avisado
+com o nome e o número do contato; a mensagem original continua indo para a DLQ.
 """
 
 import traceback
 import unicodedata
 
 from src import config
-from src.infra.rabbitmq.connection import Reply
+from src.infra.rabbitmq.connection import Reply, resumo_erro
 from src.infra.pgvector.connection import delete_chunks
 from src.infra.backend.client import clear_contact_extras, merge_contact_extras
 from src.services.adk.infos import QUEBRA_MENSAGEM
@@ -94,7 +99,7 @@ def _resetar(job: dict, organization_id: str, agent: dict, contact: dict) -> Rep
     return Reply(publishes=[_outbound(organization_id, contact, job, mensagem)])
 
 
-def handle_agent_reply(job: dict, _publish_now) -> Reply:
+def handle_agent_reply(job: dict, publish_now) -> Reply:
     agent = job.get("agent") or {}
     contact = job.get("contact") or {}
     organization_id = job.get("organizationId")
@@ -103,6 +108,14 @@ def handle_agent_reply(job: dict, _publish_now) -> Reply:
     if not organization_id or not contact.get("chatId") or not agent.get("id"):
         raise ValueError("Payload sem organizationId/contact.chatId/agent.id")
 
+    try:
+        return _atender(job, organization_id, agent, contact, messages)
+    except Exception as error:
+        _avisar_falha(job, organization_id, agent, contact, error, publish_now)
+        raise
+
+
+def _atender(job: dict, organization_id: str, agent: dict, contact: dict, messages: list[dict]) -> Reply:
     # Palavra de reset: determinístico, roda antes do LLM e não depende do modelo.
     if _pediu_reset(messages, agent):
         return _resetar(job, organization_id, agent, contact)
@@ -120,6 +133,51 @@ def handle_agent_reply(job: dict, _publish_now) -> Reply:
     finally:
         # Mesmo se algo falhar depois, os tokens já gastos ficam registrados.
         uso.enviar(agent["id"])
+
+
+def _avisar_falha(job: dict, organization_id: str, agent: dict, contact: dict, error: Exception, publish_now) -> None:
+    """O agente não conseguiu responder: manda a mensagem padrão da empresa ao
+    contato e avisa o número de alerta. Publicado já (publish_now) porque o
+    job segue para a DLQ; uma falha aqui não pode esconder o erro original."""
+    organization = job.get("organization") or {}
+    try:
+        mensagem = (organization.get("agentFailureMessage") or "").strip()
+        if mensagem:
+            # externalId próprio: reprocessar o job da DLQ ainda gera a resposta normal.
+            destino, payload = _outbound(organization_id, contact, job, mensagem)
+            publish_now(destino, {**payload, "externalId": f"ai-failure-{job.get('jobId')}"})
+            _log(job, "falha do agente: mensagem padrão enviada ao contato")
+
+        numero = "".join(c for c in str(organization.get("alertPhoneNumber") or "") if c.isdigit())
+        if numero:
+            publish_now(
+                config.QUEUE_WHATSAPP_OUTBOUND,
+                {
+                    "organizationId": organization_id,
+                    "to": numero,
+                    "type": "text",
+                    "text": _texto_alerta(agent, contact, error, bool(mensagem)),
+                    "externalId": f"ai-alert-{job.get('jobId')}",
+                },
+            )
+            _log(job, f"falha do agente: alerta enviado para {numero}")
+    except Exception as aviso_error:
+        _log(job, f"não foi possível avisar a falha do agente: {aviso_error}")
+        traceback.print_exc()
+
+
+def _texto_alerta(agent: dict, contact: dict, error: Exception, mensagem_enviada: bool) -> str:
+    numero = contact.get("number") or str(contact.get("chatId") or "").split("@")[0]
+    linhas = [
+        f"⚠️ *O agente {agent.get('name') or 'de IA'} não conseguiu responder um contato*",
+        "",
+        f"- *Nome:* {contact.get('name') or '(sem nome)'}",
+        f"- *Número:* {numero}",
+        f"- *Erro:* {resumo_erro(error)[:300]}",
+        "",
+        "O contato recebeu a mensagem padrão de falha." if mensagem_enviada else "O contato ficou sem resposta.",
+    ]
+    return "\n".join(linhas)
 
 
 def _responder(job: dict, organization_id: str, agent: dict, contact: dict, pergunta: str, uso: UsoTokens) -> Reply:

@@ -121,6 +121,12 @@ model Organization {
   wordsToBlockCampaign    String[] @default([])
   useWordsToBlockCampaign Boolean  @default(false)
 
+  // When the agent fails to answer (e.g. the model is overloaded), the contact
+  // gets agentFailureMessage (if set) and alertPhoneNumber (digits, DDI + DDD
+  // + number) is warned with the contact's name and number.
+  agentFailureMessage String?
+  alertPhoneNumber    String?
+
   rolePermissions OrganizationRolePermission[]
   campaigns       Campaign[]
   campaignBlocks  TargetBlockCampaign[]

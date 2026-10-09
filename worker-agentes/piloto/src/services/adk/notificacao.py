@@ -88,7 +88,11 @@ def gerar_notificacao(
         historico=conversa,
     )
 
-    resposta = genai.Client(api_key=api_key).models.generate_content(model=GOOGLE_ADK_MODEL, contents=prompt)
+    # O Client precisa continuar referenciado durante a chamada: se só `.models`
+    # ficar vivo, o GC coleta o Client e fecha o httpx no meio da requisição
+    # ("Cannot send a request, as the client has been closed").
+    with genai.Client(api_key=api_key) as client:
+        resposta = client.models.generate_content(model=GOOGLE_ADK_MODEL, contents=prompt)
     if uso is not None:
         uso.registrar_gemini("notification", GOOGLE_ADK_MODEL, resposta.usage_metadata, contact.get("chatId"))
     texto = (resposta.text or "").strip()

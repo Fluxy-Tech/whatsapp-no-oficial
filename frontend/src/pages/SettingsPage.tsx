@@ -1,6 +1,7 @@
 import { authClient } from "@/lib/auth-client";
 import { api } from "@/lib/api";
 import { useOrganization, usePermission } from "@/providers/OrganizationProvider";
+import { AgentFailureForm } from "@/components/settings/AgentFailureForm";
 import { MembersCard } from "@/components/settings/MembersCard";
 import { MessageWaitForm } from "@/components/settings/MessageWaitForm";
 import { NameForm } from "@/components/settings/NameForm";
@@ -49,6 +50,21 @@ export function SettingsPage() {
           />
           <MessageWaitForm
             initialValue={current?.organization.messageWaitSeconds ?? 20}
+            disabled={!canEdit || !current}
+            onSaved={refresh}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Falhas do agente</CardTitle>
+          <CardDescription>O que acontece quando o agente de IA não consegue responder um contato.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AgentFailureForm
+            initialMessage={current?.organization.agentFailureMessage ?? ""}
+            initialAlertPhone={current?.organization.alertPhoneNumber ?? ""}
             disabled={!canEdit || !current}
             onSaved={refresh}
           />

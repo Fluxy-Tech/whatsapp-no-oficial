@@ -132,9 +132,31 @@ export async function ensureCanEnter(user: SessionUser, organizationId: string) 
 
 export const MESSAGE_WAIT_LIMITS = { min: 0, max: 600 };
 
-/** Company settings: how long the agent waits for the contact to stop typing. */
-export async function updateOrganizationSettings(organizationId: string, input: { messageWaitSeconds?: unknown }) {
-  const data: { messageWaitSeconds?: number } = {};
+export const AGENT_FAILURE_MESSAGE_MAX = 1000;
+
+export type OrganizationSettingsInput = {
+  messageWaitSeconds?: unknown;
+  agentFailureMessage?: unknown;
+  alertPhoneNumber?: unknown;
+};
+
+/** Empty = no alert. Same rule as the agent's notification number. */
+function alertPhoneNumberOf(value: unknown) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (!digits) return null;
+  if (digits.length < 10 || digits.length > 15) {
+    throw new OrganizationError(400, "Número de alerta inválido. Use DDI + DDD + número, ex.: 5511999999999");
+  }
+  return digits;
+}
+
+/**
+ * Company settings: how long the agent waits for the contact to stop typing,
+ * and what happens when the agent fails to answer (message to the contact and
+ * alert number).
+ */
+export async function updateOrganizationSettings(organizationId: string, input: OrganizationSettingsInput) {
+  const data: Prisma.OrganizationUpdateInput = {};
   if (input.messageWaitSeconds !== undefined) {
     const seconds = Number(input.messageWaitSeconds);
     if (!Number.isInteger(seconds) || seconds < MESSAGE_WAIT_LIMITS.min || seconds > MESSAGE_WAIT_LIMITS.max) {
@@ -145,8 +167,21 @@ export async function updateOrganizationSettings(organizationId: string, input: 
     }
     data.messageWaitSeconds = seconds;
   }
+  if (input.agentFailureMessage !== undefined) {
+    const message = String(input.agentFailureMessage ?? "").trim();
+    if (message.length > AGENT_FAILURE_MESSAGE_MAX) {
+      throw new OrganizationError(400, `A mensagem de falha deve ter no máximo ${AGENT_FAILURE_MESSAGE_MAX} caracteres`);
+    }
+    data.agentFailureMessage = message || null;
+  }
+  if (input.alertPhoneNumber !== undefined) data.alertPhoneNumber = alertPhoneNumberOf(input.alertPhoneNumber);
+
   const organization = await prisma.organization.update({ where: { id: organizationId }, data });
-  return { messageWaitSeconds: organization.messageWaitSeconds };
+  return {
+    messageWaitSeconds: organization.messageWaitSeconds,
+    agentFailureMessage: organization.agentFailureMessage,
+    alertPhoneNumber: organization.alertPhoneNumber,
+  };
 }
 
 export async function renameOrganization(organizationId: string, rawName: unknown) {

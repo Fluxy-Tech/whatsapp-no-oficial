@@ -57,6 +57,8 @@ router.get("/current", requireMember, async (req, res) => {
       id: member.organizationId,
       name: organization?.name ?? "",
       messageWaitSeconds: organization?.messageWaitSeconds ?? 20,
+      agentFailureMessage: organization?.agentFailureMessage ?? null,
+      alertPhoneNumber: organization?.alertPhoneNumber ?? null,
     },
     role: member.role,
     permissions: member.permissions,
@@ -70,7 +72,14 @@ router.patch("/current", requirePermission("configuracoes", "edit"), async (req,
 });
 
 router.patch("/current/settings", requirePermission("configuracoes", "edit"), async (req, res) => {
-  res.json(await updateOrganizationSettings(organizationId(req), { messageWaitSeconds: req.body?.messageWaitSeconds }));
+  const body = req.body ?? {};
+  res.json(
+    await updateOrganizationSettings(organizationId(req), {
+      messageWaitSeconds: body.messageWaitSeconds,
+      agentFailureMessage: body.agentFailureMessage,
+      alertPhoneNumber: body.alertPhoneNumber,
+    }),
+  );
 });
 
 // Any member can list members (kanban/calendar assignee pickers).
