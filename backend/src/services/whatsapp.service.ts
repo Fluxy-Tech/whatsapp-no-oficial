@@ -92,6 +92,24 @@ export async function listContacts(organizationId: string) {
   }));
 }
 
+/**
+ * Contacts saved as @lid (number hidden by WhatsApp) may already have a @c.us
+ * twin. The worker resolves each one and, when the number is known, sends
+ * contact.merged so the two become a single @c.us contact (mergeLidTarget).
+ */
+export async function reconcileLidTargets(organizationId: string) {
+  const lids = await prisma.target.findMany({
+    where: { organizationId, chatId: { endsWith: "@lid" } },
+    select: { chatId: true },
+  });
+  if (!lids.length) return 0;
+  const { queued } = await workerClient.reconcileLidContacts(
+    organizationId,
+    lids.map((target) => target.chatId),
+  );
+  return queued;
+}
+
 export function listConversationTargets(organizationId: string) {
   return listTargets(organizationId, { onlyWithMessages: true });
 }

@@ -20,6 +20,7 @@ api.post("/sessions/:organizationId/start", sessionController.start);
 api.post("/sessions/:organizationId/stop", sessionController.stop);
 
 // Contatos: guardados pelo backend (Postgres); aqui só forçamos uma atualização vinda do WhatsApp.
+api.post("/organizations/:organizationId/contacts/reconcile-lid", contactController.reconcileLid);
 api.post("/organizations/:organizationId/contacts/:chatId/refresh", contactController.refresh);
 
 // Mensagens

@@ -10,7 +10,7 @@ import {
 } from "../services/campaign.service";
 import { onLeadMessage } from "../services/kanban.service";
 import { mergeLidTarget, targetView, upsertTarget, type ContactSnapshot } from "../services/target.service";
-import { recordSessionState } from "../services/whatsapp.service";
+import { reconcileLidTargets, recordSessionState } from "../services/whatsapp.service";
 
 const router = Router();
 
@@ -67,6 +67,12 @@ async function dispatch(payload: WorkerWebhook) {
         lastError: data.lastError ?? null,
       });
       whatsappEvents.emit("status", { organizationId, status: session.status, phoneNumber: session.phoneNumber });
+      // Each connection is a chance to unify @lid contacts whose number WhatsApp now reveals.
+      if (session.status === "CONNECTED") {
+        reconcileLidTargets(organizationId).catch((error) =>
+          console.error(`Failed to reconcile @lid contacts of ${organizationId}:`, error),
+        );
+      }
       break;
     }
     case "session.qrcode":

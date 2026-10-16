@@ -118,6 +118,14 @@ export const workerClient = {
     );
   },
 
+  /** Worker unifies these @lid contacts with their @c.us (contact.merged webhooks, in background). */
+  reconcileLidContacts(organizationId: string, chatIds: string[]) {
+    return request<{ queued: number }>(`/api/organizations/${org(organizationId)}/contacts/reconcile-lid`, {
+      method: "POST",
+      body: JSON.stringify({ chatIds }),
+    });
+  },
+
   getMedia(organizationId: string, messageId: string) {
     return request<WorkerMedia>(`/api/organizations/${org(organizationId)}/media/${encodeURIComponent(messageId)}`);
   },

@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { getContactSnapshot } from "../services/contact.service";
+import { getContactSnapshot, reconcileLidContacts } from "../services/contact.service";
 import { notifyBackend } from "../services/webhook.service";
 import { getClient } from "../services/whatsapp/session.manager";
 import { HttpError } from "../utils/http-error";
@@ -19,4 +19,19 @@ export async function refresh(req: Request<{ organizationId: string; chatId: str
   const contact = await getContactSnapshot(organizationId, chatId, { force: true });
   await notifyBackend("contact.updated", organizationId, { contact });
   res.json(contact);
+}
+
+/**
+ * Unifica contatos @lid com o @c.us quando o número é conhecido. Body:
+ * { chatIds: ["xxx@lid", ...] }. Responde 202 na hora e trabalha em segundo
+ * plano (cada contato consulta o WhatsApp); cada unificação vai ao backend
+ * como contact.merged.
+ */
+export async function reconcileLid(req: Request<{ organizationId: string }>, res: Response) {
+  const { organizationId } = req.params;
+  if (!getClient(organizationId)) throw new HttpError(409, "Sessão do WhatsApp não está conectada");
+
+  const chatIds = Array.isArray(req.body?.chatIds) ? req.body.chatIds.filter((id: unknown) => typeof id === "string") : [];
+  void reconcileLidContacts(organizationId, chatIds);
+  res.status(202).json({ queued: chatIds.length });
 }

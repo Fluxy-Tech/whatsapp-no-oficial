@@ -30,10 +30,39 @@ const subscribedPresence = new Set<string>();
 // consultado de novo depois de LID_RECHECK_MS (o WhatsApp pode revelá-lo).
 const LID_RECHECK_MS = 5 * 60_000;
 const lidToPhoneCache = new Map<string, { phone: string | null; checkedAt: number }>();
-// Conversas @c.us cujo histórico no @lid já foi conferido/migrado neste processo.
-const lidMergeChecked = new Set<string>();
+// @c.us -> @lid, para mensagens que chegam pelo número. Mesma regra de recheck.
+const phoneToLidCache = new Map<string, { lid: string | null; checkedAt: number }>();
+// Pares @lid -> @c.us já unificados neste processo (histórico movido e backend avisado).
+const lidLinked = new Set<string>();
 
 const keyOf = (organizationId: string, chatId: string) => `${organizationId}:${chatId}`;
+const fresh = (checkedAt: number) => Date.now() - checkedAt < LID_RECHECK_MS;
+
+// Nome formatado que é só um telefone ("+55 66 9234-0509"): o WhatsApp monta
+// esse nome a partir do número real do contato.
+const PHONE_NAME = /^\+?[\d\s().-]+$/;
+
+function phoneChatIdFromName(name: unknown): string | null {
+  if (typeof name !== "string" || !PHONE_NAME.test(name.trim())) return null;
+  const digits = name.replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 15 ? `${digits}@c.us` : null;
+}
+
+/** Número de um @lid: tabela pn/lid do WhatsApp e, sem ela, o próprio contato. */
+async function lookupLidPhone(organizationId: string, lid: string): Promise<string | null> {
+  const client = getClient(organizationId);
+  if (!client) return null;
+
+  const entry = await client.getPnLidEntry(lid).catch(() => null);
+  const fromEntry = serializeWid(entry?.phoneNumber);
+  if (fromEntry?.endsWith("@c.us")) return fromEntry;
+
+  const contact = (await client.getContact(lid).catch(() => null)) as Record<string, unknown> | null;
+  if (!contact) return null;
+  const fromContact = serializeWid(contact.phoneNumber);
+  if (fromContact?.endsWith("@c.us")) return fromContact;
+  return phoneChatIdFromName(contact.formattedName);
+}
 
 /**
  * O WhatsApp pode entregar a mesma pessoa como 5511...@c.us ou como xxx@lid
@@ -46,55 +75,86 @@ export async function resolveCanonicalChatId(organizationId: string, chatId: str
 
   const cacheKey = keyOf(organizationId, chatId);
   const cached = lidToPhoneCache.get(cacheKey);
-  if (cached && (cached.phone || Date.now() - cached.checkedAt < LID_RECHECK_MS)) return cached.phone ?? chatId;
+  if (cached && (cached.phone || fresh(cached.checkedAt))) return cached.phone ?? chatId;
+  if (!getClient(organizationId)) return chatId;
 
-  const client = getClient(organizationId);
-  if (!client) return chatId;
+  const phone = await lookupLidPhone(organizationId, chatId);
+  lidToPhoneCache.set(cacheKey, { phone, checkedAt: Date.now() });
+  return phone ?? chatId;
+}
 
-  const entry = await client.getPnLidEntry(chatId).catch(() => null);
-  const phoneWid = serializeWid(entry?.phoneNumber);
-  const canonical = phoneWid?.endsWith("@c.us") ? phoneWid : null;
-  lidToPhoneCache.set(cacheKey, { phone: canonical, checkedAt: Date.now() });
-  return canonical ?? chatId;
+async function lidOfPhone(organizationId: string, phoneChatId: string): Promise<string | null> {
+  const cacheKey = keyOf(organizationId, phoneChatId);
+  const cached = phoneToLidCache.get(cacheKey);
+  if (cached && (cached.lid || fresh(cached.checkedAt))) return cached.lid;
+
+  const entry = await getClient(organizationId)?.getPnLidEntry(phoneChatId).catch(() => null);
+  const lidWid = serializeWid(entry?.lid);
+  const lid = lidWid?.endsWith("@lid") ? lidWid : null;
+  phoneToLidCache.set(cacheKey, { lid, checkedAt: Date.now() });
+  return lid;
 }
 
 /**
  * Id da conversa para gravar/enviar uma mensagem: o @c.us quando o número é
  * conhecido, senão o @lid. Quando o número aparece, o histórico salvo no @lid
- * é migrado para o @c.us (conferido uma vez por conversa e processo).
+ * é migrado para o @c.us e o backend junta os dois contatos (uma vez por par
+ * @lid/@c.us e processo).
  */
 export async function resolveContactChatId(organizationId: string, chatId: string): Promise<string> {
   const canonical = await resolveCanonicalChatId(organizationId, chatId);
   if (!canonical.endsWith("@c.us")) return canonical;
 
-  const checkKey = keyOf(organizationId, canonical);
-  if (lidMergeChecked.has(checkKey)) return canonical;
-
-  let lid: string | null = chatId.endsWith("@lid") ? chatId : null;
-  if (!lid) {
-    // A mensagem já veio pelo número: descobre o @lid para ver se há histórico nele.
-    const entry = await getClient(organizationId)?.getPnLidEntry(canonical).catch(() => null);
-    const lidWid = serializeWid(entry?.lid);
-    lid = lidWid?.endsWith("@lid") ? lidWid : null;
-  }
-  if (lid) await mergeLidHistory(organizationId, lid, canonical);
-  lidMergeChecked.add(checkKey);
+  // A mensagem já veio pelo número: descobre o @lid para ver se há histórico nele.
+  const lid = chatId.endsWith("@lid") ? chatId : await lidOfPhone(organizationId, canonical);
+  if (lid) await linkLid(organizationId, lid, canonical);
   return canonical;
 }
 
-/** Move as mensagens do @lid para o @c.us e avisa o backend para juntar os contatos. */
-async function mergeLidHistory(organizationId: string, lid: string, phoneChatId: string) {
+/**
+ * Move as mensagens do @lid para o @c.us e avisa o backend (contact.merged),
+ * que junta os contatos. O aviso vai mesmo sem mensagens para mover: o
+ * contato @lid pode existir no backend de antes (ex.: aviso que falhou).
+ */
+async function linkLid(organizationId: string, lid: string, phoneChatId: string) {
+  const pairKey = keyOf(organizationId, `${lid}>${phoneChatId}`);
+  if (lidLinked.has(pairKey)) return;
+
   const { modifiedCount } = await MessageModel.updateMany(
     { organizationId, chatId: lid },
     { $set: { chatId: phoneChatId } },
   );
   lidToPhoneCache.set(keyOf(organizationId, lid), { phone: phoneChatId, checkedAt: Date.now() });
+  phoneToLidCache.set(keyOf(organizationId, phoneChatId), { lid, checkedAt: Date.now() });
   cache.delete(keyOf(organizationId, lid));
-  if (!modifiedCount) return;
+  if (modifiedCount) {
+    logger.info(`Contato ${lid} agora tem número: ${modifiedCount} mensagem(ns) movida(s) para ${phoneChatId}`);
+  }
 
-  logger.info(`Contato ${lid} agora tem número: ${modifiedCount} mensagem(ns) movida(s) para ${phoneChatId}`);
   const contact = await getContactSnapshot(organizationId, phoneChatId, { force: true });
   await notifyBackend("contact.merged", organizationId, { fromChatId: lid, contact });
+  lidLinked.add(pairKey);
+}
+
+/**
+ * Unifica contatos @lid já salvos (ex.: duplicados de antes desta correção):
+ * cada um que tiver número conhecido vira o @c.us. Retorna quantos foram
+ * unificados; os avisos ao backend saem um por contato (contact.merged).
+ */
+export async function reconcileLidContacts(organizationId: string, chatIds: string[]): Promise<number> {
+  let linked = 0;
+  for (const lid of new Set(chatIds.filter((chatId) => chatId.endsWith("@lid")))) {
+    try {
+      const canonical = await resolveCanonicalChatId(organizationId, lid);
+      if (!canonical.endsWith("@c.us")) continue;
+      await linkLid(organizationId, lid, canonical);
+      linked++;
+    } catch (error) {
+      logger.warn(`Não foi possível unificar o contato ${lid}`, error);
+    }
+  }
+  logger.info(`Contatos @lid conferidos: ${linked} de ${chatIds.length} unificado(s) com o número`);
+  return linked;
 }
 
 const laterIso = (a: string | null, b: string | null) => (!a ? b : !b ? a : a > b ? a : b);
