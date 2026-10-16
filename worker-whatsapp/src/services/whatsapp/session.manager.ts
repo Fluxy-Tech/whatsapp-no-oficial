@@ -86,17 +86,65 @@ function widString(value: unknown): string | null {
   return null;
 }
 
+/** Mensagem do WA-JS em JSON puro, com os ids já em string. */
+function toPlainMessage(message: unknown): Record<string, any> {
+  // Converte para JSON puro (o objeto pode conter Wids/getters do WA-JS).
+  const plain = JSON.parse(JSON.stringify(message));
+  // JSON.stringify perde ids que o WA-JS entrega como getter ou como
+  // Wid/MsgKey sem toJSON (ex.: "id" sumia e a mensagem era ignorada):
+  // lê do objeto original e grava já serializado.
+  const live = message as Record<string, unknown>;
+  for (const key of WID_FIELDS) {
+    const value = widString(live[key]);
+    if (value) plain[key] = value;
+  }
+  return plain;
+}
+
+// A primeira mensagem de um contato novo costuma chegar como "ciphertext"
+// ("Aguardando mensagem" no celular): o WhatsApp ainda não trocou as chaves
+// com este aparelho. Quando ela é descriptografada não vem um evento novo,
+// então buscamos de novo nestes intervalos até ela virar mensagem de verdade.
+const CIPHERTEXT_RETRY_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000, 600_000];
+const waitingDecryption = new Set<string>();
+
+function waitForDecryption(organizationId: string, client: Whatsapp, messageId: string, attempt = 0) {
+  const key = `${organizationId}:${messageId}`;
+  if (attempt === 0) {
+    if (waitingDecryption.has(key)) return;
+    waitingDecryption.add(key);
+    logger.info(`Mensagem ${messageId} chegou criptografada (ciphertext); aguardando o WhatsApp descriptografar`);
+  }
+
+  setTimeout(async () => {
+    // A sessão pode ter sido encerrada/trocada no meio tempo.
+    if (getClient(organizationId) !== client) {
+      waitingDecryption.delete(key);
+      return;
+    }
+    const message = await client.getMessageById(messageId).catch(() => null);
+    const plain = message ? toPlainMessage(message) : null;
+    if (plain && plain.type && plain.type !== "ciphertext") {
+      waitingDecryption.delete(key);
+      logger.info(`Mensagem ${messageId} descriptografada após ${attempt + 1} tentativa(s)`);
+      publishInbound({ kind: "message", organizationId, message: plain });
+      return;
+    }
+    if (attempt + 1 < CIPHERTEXT_RETRY_MS.length) {
+      waitForDecryption(organizationId, client, messageId, attempt + 1);
+      return;
+    }
+    waitingDecryption.delete(key);
+    logger.warn(`Mensagem ${messageId} continua criptografada após ${CIPHERTEXT_RETRY_MS.length} tentativas; descartada`);
+  }, CIPHERTEXT_RETRY_MS[attempt]);
+}
+
 function attachListeners(organizationId: string, client: Whatsapp) {
   client.onAnyMessage((message) => {
-    // Converte para JSON puro (o objeto pode conter Wids/getters do WA-JS).
-    const plain = JSON.parse(JSON.stringify(message));
-    // JSON.stringify perde ids que o WA-JS entrega como getter ou como
-    // Wid/MsgKey sem toJSON (ex.: "id" sumia e a mensagem era ignorada):
-    // lê do objeto original e grava já serializado.
-    const live = message as unknown as Record<string, unknown>;
-    for (const key of WID_FIELDS) {
-      const value = widString(live[key]);
-      if (value) plain[key] = value;
+    const plain = toPlainMessage(message);
+    if (plain.type === "ciphertext" && typeof plain.id === "string" && !plain.isGroupMsg) {
+      waitForDecryption(organizationId, client, plain.id);
+      return;
     }
     publishInbound({ kind: "message", organizationId, message: plain });
   });
