@@ -32,20 +32,30 @@ export function ChatPanel({ chatId, contactLabel }: ChatPanelProps) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // Each new message reloads the history; only the latest request may update
+  // the screen, or a slower older response would bring back an outdated list.
+  const requestRef = useRef(0);
 
-  function loadMessages(id: string) {
-    setLoading(true);
+  function loadMessages(id: string, { initial = false } = {}) {
+    const request = ++requestRef.current;
+    if (initial) setLoading(true);
     api<Message[]>(`/api/messages/chats/${encodeURIComponent(id)}/messages`)
-      .then(setMessages)
-      .finally(() => setLoading(false));
+      .then((items) => {
+        if (request === requestRef.current) setMessages(items);
+      })
+      .finally(() => {
+        if (request === requestRef.current) setLoading(false);
+      });
   }
 
   useEffect(() => {
     if (!chatId) {
+      requestRef.current++;
       setMessages([]);
       return;
     }
-    loadMessages(chatId);
+    setMessages([]);
+    loadMessages(chatId, { initial: true });
   }, [chatId]);
 
   useEffect(() => {

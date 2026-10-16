@@ -224,8 +224,12 @@ export async function saveOutboundMessage(params: {
   media: StoredMedia | null;
   quotedMessageId: string | null;
   externalId: string | null;
+  /** Horário do WhatsApp para a mensagem enviada; sem ele, o relógio do servidor. */
+  timestamp?: Date | null;
 }) {
-  const timestamp = new Date();
+  // Mesmo relógio das mensagens recebidas (o do WhatsApp): o do servidor pode
+  // estar adiantado e pôr a resposta depois de uma mensagem que chegou depois.
+  const timestamp = params.timestamp ?? new Date();
 
   const message = await MessageModel.findOneAndUpdate(
     { organizationId: params.organizationId, messageId: params.messageId },
@@ -305,7 +309,9 @@ export async function listMessages(params: {
   const filter: Record<string, unknown> = { organizationId: params.organizationId, chatId: params.chatId };
   if (params.before) filter.timestamp = { $lt: params.before };
 
-  const items = await MessageModel.find(filter).sort({ timestamp: -1 }).limit(params.limit);
+  // O WhatsApp só dá segundos: mensagens no mesmo segundo (ex.: partes de uma
+  // resposta do agente) saem na ordem em que foram salvas (_id).
+  const items = await MessageModel.find(filter).sort({ timestamp: -1, _id: -1 }).limit(params.limit);
   // Busca do mais novo pro mais antigo (paginação por cursor), devolve em ordem cronológica.
   return items.reverse();
 }

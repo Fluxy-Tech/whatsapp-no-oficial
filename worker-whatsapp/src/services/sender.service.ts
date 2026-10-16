@@ -179,5 +179,7 @@ async function sendAndPersist(payload: OutboundMessage, chatId: string) {
     media,
     quotedMessageId: payload.quotedMessageId ?? null,
     externalId: payload.externalId ?? null,
+    // "t" do WhatsApp em segundos, como nas mensagens recebidas.
+    timestamp: typeof sent?.t === "number" && sent.t > 0 ? new Date(sent.t * 1000) : null,
   });
 }
