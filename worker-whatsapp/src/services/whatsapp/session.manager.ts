@@ -73,10 +73,31 @@ function publishInbound(event: InboundEvent) {
   publish(QUEUES.inbound, event).catch((error) => logger.error("Falha ao publicar evento inbound", error));
 }
 
+const WID_FIELDS = ["id", "from", "to", "chatId", "author", "quotedMsgId"] as const;
+
+/** Wid/MsgKey do WA-JS em string: _serialized ou o toString() deles. */
+function widString(value: unknown): string | null {
+  const serialized = serializeWid(value);
+  if (serialized) return serialized;
+  if (value && typeof value === "object" && typeof value.toString === "function") {
+    const text = value.toString();
+    return text && text !== "[object Object]" ? text : null;
+  }
+  return null;
+}
+
 function attachListeners(organizationId: string, client: Whatsapp) {
   client.onAnyMessage((message) => {
     // Converte para JSON puro (o objeto pode conter Wids/getters do WA-JS).
     const plain = JSON.parse(JSON.stringify(message));
+    // JSON.stringify perde ids que o WA-JS entrega como getter ou como
+    // Wid/MsgKey sem toJSON (ex.: "id" sumia e a mensagem era ignorada):
+    // lê do objeto original e grava já serializado.
+    const live = message as unknown as Record<string, unknown>;
+    for (const key of WID_FIELDS) {
+      const value = widString(live[key]);
+      if (value) plain[key] = value;
+    }
     publishInbound({ kind: "message", organizationId, message: plain });
   });
 

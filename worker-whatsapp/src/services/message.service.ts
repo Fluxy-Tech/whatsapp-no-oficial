@@ -137,7 +137,14 @@ export async function processWhatsappMessage(
 ): Promise<ProcessedMessage | null> {
   const normalized = normalize(raw);
   if (!normalized) {
-    logger.warn("Mensagem ignorada: id/from/to ilegíveis", { id: raw.id, from: raw.from, to: raw.to });
+    // id: null (não undefined) para aparecer no log; keys ajudam a ver o formato que o WA-JS mandou.
+    logger.warn("Mensagem ignorada: id/from/to ilegíveis", {
+      id: raw.id ?? null,
+      from: raw.from ?? null,
+      to: raw.to ?? null,
+      type: raw.type ?? null,
+      keys: Object.keys(raw).slice(0, 40),
+    });
     return null;
   }
   if (IGNORED_TYPES.has(normalized.type) || raw.isGroupMsg || !isIndividualChat(normalized.chatId)) {
