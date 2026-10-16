@@ -20,9 +20,11 @@ export function DashboardLayout() {
 
   return (
     <OrganizationProvider>
-      <div className="flex h-screen bg-muted/30">
+      {/* Only <main> scrolls. "relative" keeps absolutely positioned elements (e.g. the hidden native
+          <select> Radix renders inside forms) inside it; otherwise they stretch the page and the sidebar scrolls away. */}
+      <div className="flex h-screen overflow-hidden bg-muted/30">
         <AppSidebar />
-        <main className="w-full space-y-6 overflow-y-auto p-6">
+        <main className="relative w-full min-w-0 space-y-6 overflow-y-auto p-6">
           <Outlet />
         </main>
       </div>
