@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { MessageSquare, Plus, Save, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/relative-time";
+import { TextLinks } from "@/components/LinkifiedText";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -164,12 +165,16 @@ export function TargetDetail({ target, metadadoNames, canEdit, onOpenChat, onUpd
                   disabled={!canEdit || fromAgent}
                   title={fromAgent ? "Metadado definido no agente" : undefined}
                 />
-                <Input
-                  value={row.value}
-                  onChange={(e) => updateRow(row.key, { value: e.target.value })}
-                  placeholder="Ainda não coletado"
-                  disabled={!canEdit}
-                />
+                <div className="min-w-0 flex-1 space-y-1">
+                  <Input
+                    value={row.value}
+                    onChange={(e) => updateRow(row.key, { value: e.target.value })}
+                    placeholder="Ainda não coletado"
+                    disabled={!canEdit}
+                  />
+                  {/* The value stays editable; its links (e.g. an approved image) open from here. */}
+                  <TextLinks text={row.value} className="px-1" />
+                </div>
                 {canEdit && !fromAgent && (
                   <Button
                     type="button"

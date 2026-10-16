@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { CalendarDays, MessageSquare, Trash2 } from "lucide-react";
+import { LinkifiedText } from "@/components/LinkifiedText";
 import {
   DEFAULT_SOURCE,
   formatPhone,
@@ -342,7 +343,9 @@ export function LeadCardDrawer({
                     {extras.map(([key, value]) => (
                       <div key={key} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 px-3 py-2 text-sm">
                         <dt className="truncate text-muted-foreground">{key}</dt>
-                        <dd className="break-words">{value}</dd>
+                        <dd className="min-w-0">
+                          <LinkifiedText text={String(value)} />
+                        </dd>
                       </div>
                     ))}
                   </dl>
