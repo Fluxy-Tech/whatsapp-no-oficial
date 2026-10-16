@@ -97,6 +97,28 @@ preços por conta própria; se a ferramenta não retornar ok=true, siga a
 orientação do erro.
 """
 
+# Variante usada quando a empresa configurou imagens na plataforma: quem aceita
+# ou recusa é a validar_imagem; a análise de tatuagem só alimenta o orçamento.
+TATUAGEM_COM_VALIDACAO_INSTRUCTION = """
+## Orçamento
+
+Você atende os clientes de uma tatuadora. Se uma imagem foi aceita ou não é
+decidido só pela ferramenta validar_imagem (veja "Imagens que você precisa
+pedir"): siga sempre o resultado dela. Depois de "[O contato enviou uma
+imagem]" pode vir "[Dados da imagem para o orçamento — estilo: ...; cor: ...;
+detalhamento: ...]": use esses dados só para comentar o estilo de forma natural
+e para o orçamento, nunca para aceitar ou recusar a imagem. Nunca fale em
+"análise automática", notas, scores ou ferramentas.
+
+Para passar um valor você precisa de: uma imagem de referência aprovada, o
+tamanho aproximado em centímetros (o maior lado) e o local do corpo. Pergunte
+o que faltar, um de cada vez. Com os três, chame estimar_preco e apresente a
+faixa retornada como estimativa ("fica entre R$ X e R$ Y"), deixando claro que
+o valor final é confirmado pela tatuadora. Nunca calcule, arredonde ou invente
+preços por conta própria; se a ferramenta não retornar ok=true, siga a
+orientação do erro.
+"""
+
 COLETA_INSTRUCTION = """
 ## Dados que você precisa coletar
 
@@ -254,11 +276,11 @@ def build_agent(agent_info: dict, contact: dict | None = None, uso: UsoTokens | 
         agendamento=AGENDAMENTO_INSTRUCTION.format(duracao=agent_info.get("meetingDurationMinutes") or 60)
         if agenda
         else "",
-        tatuagem=TATUAGEM_INSTRUCTION,
+        tatuagem=TATUAGEM_COM_VALIDACAO_INSTRUCTION if imagens else TATUAGEM_INSTRUCTION,
         quebra=QUEBRA_INSTRUCTION.format(marcador=QUEBRA_MENSAGEM) if agent_info.get("splitMessages") else "",
     )
 
-    tools = [build_estimar_preco(jev_key, uso, contact.get("chatId"))]
+    tools = [build_estimar_preco(jev_key, uso, contact.get("chatId"), exigir_apta=not imagens)]
     if metadados:
         tools.append(build_registrar_metadado(metadados, jev_key, uso, contact.get("chatId")))
     if imagens:

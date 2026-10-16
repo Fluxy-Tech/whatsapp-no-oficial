@@ -104,8 +104,19 @@ def analisar_imagens(
     return analises
 
 
-def descrever(analise: AnaliseImagem) -> str:
-    """Linha que o agente do ADK lê logo depois de "[O contato enviou uma imagem]"."""
+def descrever(analise: AnaliseImagem, decide: bool = True) -> str:
+    """Linha que o agente do ADK lê logo depois de "[O contato enviou uma imagem]".
+
+    decide=False: o agente tem imagens configuradas na plataforma e quem aceita
+    ou recusa é a validar_imagem (regras do JEV da empresa). A análise de
+    tatuagem vira só dados para o orçamento, sem "apta"/"motivo"."""
+    if not decide:
+        if analise.detalhamento is None:
+            return ""
+        nivel = DETALHAMENTO_LABEL[min(round(analise.detalhamento), len(DETALHAMENTO_LABEL) - 1)]
+        cor = COR_LABEL.get(analise.cor, analise.cor)
+        return f"[Dados da imagem para o orçamento — estilo: {analise.estilo}; cor: {cor}; detalhamento: {nivel}]"
+
     partes = [f"tipo: {TIPO_LABEL.get(analise.tipo, analise.tipo)}", f"apta: {'sim' if analise.apta else 'não'}"]
     if not analise.apta:
         partes.append(f"motivo: {analise.motivo}")

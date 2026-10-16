@@ -46,6 +46,7 @@ from src.services.adk.infos import QUEBRA_MENSAGEM, STATE_IMAGENS, STATE_IMAGENS
 from src.services.adk.notificacao import coleta_concluida, gerar_notificacao, numero_notificacao
 from src.services.adk.runner import gerar_resposta, resetar_conversa
 from src.services.jev.imagem import analisar_imagens, descrever
+from src.services.jev.imagens import metadados_de_imagem
 from src.services.jev.validacao import chave_jev
 from src.services.rag_ingestion.ingest import ingest_document
 from src.services.tokens import UsoTokens
@@ -175,11 +176,14 @@ def _atender(job: dict, organization_id: str, agent: dict, contact: dict, messag
         analises = analisar_imagens(chave_jev(agent), messages, uso, contact.get("chatId"))
         # Mensagens agrupadas pelo backend viram uma única entrada, em ordem;
         # cada imagem analisada ganha a linha da análise logo depois.
+        # Com imagens configuradas na plataforma, só a validar_imagem aceita/recusa.
+        decide = not metadados_de_imagem(agent)
         linhas = []
         for m in messages:
             linhas.append(m.get("text", ""))
-            if m.get("messageId") in analises:
-                linhas.append(descrever(analises[m["messageId"]]))
+            linha = descrever(analises[m["messageId"]], decide) if m.get("messageId") in analises else ""
+            if linha:
+                linhas.append(linha)
         pergunta = "\n".join(linhas).strip()
 
         _log(job, f"agente '{agent.get('name')}' respondendo: {pergunta[:200]!r}")

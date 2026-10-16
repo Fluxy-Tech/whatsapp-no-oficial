@@ -101,7 +101,9 @@ def build_agendamento(organization_id: str, agent_id: str, chat_id: str):
     return [consultar_horarios, agendar_reuniao]
 
 
-def build_estimar_preco(jev_key: str | None = None, uso: UsoTokens | None = None, chat_id: str | None = None):
+def build_estimar_preco(
+    jev_key: str | None = None, uso: UsoTokens | None = None, chat_id: str | None = None, exigir_apta: bool = True
+):
     def estimar_preco(tool_context: ToolContext, tamanho_cm: float, local_corpo: str) -> dict:
         """Calcula a faixa de preço estimada da tatuagem a partir da última
         imagem de referência apta que o contato enviou. `tamanho_cm` é o maior
@@ -109,8 +111,15 @@ def build_estimar_preco(jev_key: str | None = None, uso: UsoTokens | None = None
         será feita, como o contato disse. Só passe valores ao contato que
         vierem desta ferramenta."""
         imagens = tool_context.state.get(STATE_IMAGENS) or []
+        # exigir_apta=False: a imagem já foi aprovada pela validar_imagem (regras da
+        # empresa); da análise de tatuagem só precisamos do detalhamento e da cor.
         referencia = next(
-            (i for i in reversed(imagens) if i.get("apta") and i.get("tipo") in perguntas.TIPOS_COM_DESENHO), None
+            (
+                i
+                for i in reversed(imagens)
+                if i.get("detalhamento") is not None and (i.get("apta") or not exigir_apta)
+            ),
+            None,
         )
         if not referencia:
             return {"ok": False, "erro": "Ainda não há uma imagem de referência apta. Peça uma foto nítida do desenho."}
