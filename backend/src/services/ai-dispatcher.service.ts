@@ -5,6 +5,7 @@ import { agentReplyQueue, publish } from "../lib/rabbitmq";
 import type { Target } from "@prisma/client";
 import type { WorkerMessage } from "../lib/worker-client";
 import { canAnswer } from "./agent.service";
+import { imageRulesOf } from "./image-rules";
 import { extrasOf } from "./target.service";
 
 // People often split one thought into several WhatsApp messages. Like a person
@@ -28,6 +29,14 @@ type PendingConversation = {
 };
 
 const pending = new Map<string, PendingConversation>();
+
+const BACKEND_PUBLIC_URL = (process.env.BETTER_AUTH_URL ?? "http://localhost:6802").replace(/\/+$/, "");
+
+/** Opens the media in the browser (requires login): see routes/messages.ts. */
+function mediaLink(chatId: string, messageId: string) {
+  const chat = encodeURIComponent(chatId);
+  return `${BACKEND_PUBLIC_URL}/api/messages/chats/${chat}/messages/${encodeURIComponent(messageId)}/media/open`;
+}
 
 const MEDIA_LABELS: Record<string, string> = {
   image: "uma imagem",
@@ -62,6 +71,16 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
       type: message.type,
       text: messageText(message),
       timestamp: message.timestamp,
+      // Agents that read media (JEV image validation) download it from S3;
+      // link opens it in the platform (saved with approved images).
+      media: message.media
+        ? {
+            bucket: message.media.bucket,
+            key: message.media.key,
+            mimetype: message.media.mimetype,
+            link: mediaLink(contact.chatId, message.messageId),
+          }
+        : null,
     }))
     .filter((message) => message.text);
   if (!messages.length) return;
@@ -93,7 +112,13 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
         context: agent.context,
         tokenOpenAi: decryptSecret(agent.tokenOpenAi),
         tokenAdk: decryptSecret(agent.tokenAdk),
-        metadados: agent.metadados.map((m) => ({ name: m.name, descricao: m.descricao })),
+        tokenJev: decryptSecret(agent.tokenJev),
+        metadados: agent.metadados.map((m) => ({
+          name: m.name,
+          descricao: m.descricao,
+          kind: m.kind,
+          imageRules: imageRulesOf(m.imageRules),
+        })),
         documents: agent.documents,
         resetKeywords: agent.resetKeywords,
         resetMessage: agent.resetMessage,

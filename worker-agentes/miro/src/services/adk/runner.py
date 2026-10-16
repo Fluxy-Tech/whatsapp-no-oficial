@@ -33,7 +33,11 @@ async def _sessao_atual(session_service, user_id: str) -> str:
     return nova.id
 
 
-async def _executar(pergunta: str, agent_info: dict, contact: dict) -> ResultadoResposta:
+# Itens guardados por lista do state (as mais antigas saem primeiro).
+MAX_ITENS_NO_STATE = 10
+
+
+async def _executar(pergunta: str, agent_info: dict, contact: dict, anexos: dict[str, list[dict]]) -> ResultadoResposta:
     # Um contato = um usuário do ADK (id do contato no worker-whatsapp).
     user_id = contact["id"]
 
@@ -46,9 +50,16 @@ async def _executar(pergunta: str, agent_info: dict, contact: dict) -> Resultado
 
         runner = Runner(agent=build_agent(agent_info, contact), app_name=APP_NAME, session_service=session_service)
         mensagem = types.Content(role="user", parts=[types.Part(text=pergunta)])
+        # Anexos deste turno (ex.: imagens recebidas) entram no state junto com a mensagem.
+        estado = (antes.state if antes else {}) or {}
+        state_delta = {
+            chave: (list(estado.get(chave) or []) + itens)[-MAX_ITENS_NO_STATE:] for chave, itens in anexos.items() if itens
+        } or None
 
         resposta = ""
-        async for event in runner.run_async(user_id=user_id, session_id=session_id, new_message=mensagem):
+        async for event in runner.run_async(
+            user_id=user_id, session_id=session_id, new_message=mensagem, state_delta=state_delta
+        ):
             chamadas = event.get_function_calls() if hasattr(event, "get_function_calls") else []
             if chamadas:
                 print(f"[agente user={user_id}] tools: {[c.name for c in chamadas]}")
@@ -79,7 +90,10 @@ def resetar_conversa(contact: dict) -> int:
     return asyncio.run(_apagar_sessoes(contact["id"]))
 
 
-def gerar_resposta(pergunta: str, agent_info: dict, contact: dict) -> ResultadoResposta:
+def gerar_resposta(
+    pergunta: str, agent_info: dict, contact: dict, anexos: dict[str, list[dict]] | None = None
+) -> ResultadoResposta:
+    """`anexos`: {chave do state: itens deste turno}, somados às listas da sessão."""
     if not contact.get("id"):
         raise ValueError("Contato sem 'id' — não é possível abrir a sessão no ADK.")
-    return asyncio.run(_executar(pergunta, agent_info, contact))
+    return asyncio.run(_executar(pergunta, agent_info, contact, anexos or {}))

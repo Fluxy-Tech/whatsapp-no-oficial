@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BookOpen, Coins, Save, Trash2, UserRound, Workflow } from "lucide-react";
+import { BookOpen, Coins, ImageIcon, Save, Trash2, UserRound, Workflow } from "lucide-react";
 import { TokenUsagePanel } from "@/components/agents/TokenUsagePanel";
 import { api } from "@/lib/api";
 import { queueKey, type Agent, type SecretInfo } from "@/lib/agents";
@@ -20,6 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { AgentDocuments } from "@/components/agents/AgentDocuments";
 import { KeywordsInput } from "@/components/agents/KeywordsInput";
+import { ImageRequestsEditor } from "@/components/agents/ImageRequestsEditor";
 import { MetadadosEditor, type MetadadoDraft, type StageOption } from "@/components/agents/MetadadosEditor";
 
 type TokenDraft = { value: string; remove: boolean };
@@ -31,6 +32,7 @@ type Form = {
   context: string;
   tokenOpenAi: TokenDraft;
   tokenAdk: TokenDraft;
+  tokenJev: TokenDraft;
   metadados: MetadadoDraft[];
   resetKeywords: string[];
   resetMessage: string;
@@ -55,12 +57,15 @@ function toForm(agent: Agent | null): Form {
     context: agent?.context ?? "",
     tokenOpenAi: { value: "", remove: false },
     tokenAdk: { value: "", remove: false },
+    tokenJev: { value: "", remove: false },
     metadados: (agent?.metadados ?? []).map((m) => ({
       key: m.id,
       id: m.id,
       name: m.name,
       descricao: m.descricao,
       stageId: m.stageId,
+      kind: m.kind,
+      imageRules: m.imageRules,
     })),
     resetKeywords: agent?.resetKeywords ?? [],
     resetMessage: agent?.resetMessage ?? DEFAULT_RESET_MESSAGE,
@@ -180,6 +185,10 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
   }, [agent?.id]);
 
   const disabled = !canEdit || saving;
+  // Text and image metadados are edited in separate cards but saved as one list.
+  const textMetadados = form.metadados.filter((m) => m.kind !== "image");
+  const imageMetadados = form.metadados.filter((m) => m.kind === "image");
+  const jevConfigured = Boolean((agent?.tokenJev.configured && !form.tokenJev.remove) || form.tokenJev.value.trim());
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
@@ -193,7 +202,15 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
         context: form.context,
         tokenOpenAi: tokenPayload(form.tokenOpenAi),
         tokenAdk: tokenPayload(form.tokenAdk),
-        metadados: form.metadados.map(({ id, name, descricao, stageId }) => ({ id, name, descricao, stageId })),
+        tokenJev: tokenPayload(form.tokenJev),
+        metadados: form.metadados.map(({ id, name, descricao, stageId, kind, imageRules }) => ({
+          id,
+          name,
+          descricao,
+          stageId,
+          kind,
+          imageRules: kind === "image" ? imageRules : [],
+        })),
         resetKeywords: form.resetKeywords,
         resetMessage: form.resetMessage,
         numberPhoneNotification: form.numberPhoneNotification.trim() || null,
@@ -355,6 +372,15 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
                     onChange={(tokenOpenAi) => setForm({ ...form, tokenOpenAi })}
                     disabled={disabled}
                   />
+                  <TokenField
+                    id="token-jev"
+                    label="Token JEV (TypeSafe)"
+                    help="Chave da TypeSafe (console.typesafe.ai/keys). Usada para validar as imagens pedidas na aba Funções."
+                    stored={agent?.tokenJev ?? null}
+                    draft={form.tokenJev}
+                    onChange={(tokenJev) => setForm({ ...form, tokenJev })}
+                    disabled={disabled}
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -371,8 +397,8 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <MetadadosEditor
-                    value={form.metadados}
-                    onChange={(metadados) => setForm({ ...form, metadados })}
+                    value={textMetadados}
+                    onChange={(metadados) => setForm({ ...form, metadados: [...metadados, ...imageMetadados] })}
                     disabled={disabled}
                     stageOptions={stageOptions}
                   />
@@ -405,6 +431,32 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
                       começa do zero. Deixe vazio para usar a frase padrão.
                     </p>
                   </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ImageIcon className="h-4 w-4" />
+                    Análise de imagens (JEV)
+                  </CardTitle>
+                  <CardDescription>
+                    O agente pede cada imagem como descrito, o JEV confere a imagem com as regras e o agente recebe o
+                    resultado: se todas passarem, salva no metadado um resumo e o link da imagem; se não, pede outra.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {imageMetadados.length > 0 && !jevConfigured && (
+                    <p className="text-sm text-destructive">
+                      Configure o Token JEV no perfil do agente. Sem ele, o agente não consegue validar as imagens.
+                    </p>
+                  )}
+                  <ImageRequestsEditor
+                    value={imageMetadados}
+                    onChange={(images) => setForm({ ...form, metadados: [...textMetadados, ...images] })}
+                    disabled={disabled}
+                    stageOptions={stageOptions}
+                  />
                 </CardContent>
               </Card>
 

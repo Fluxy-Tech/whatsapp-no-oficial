@@ -1,0 +1,11 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+**/.env
+.env
+.env-producao
+**/.env-producao
+# Sessões locais do adk web
+.adk/

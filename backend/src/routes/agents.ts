@@ -56,6 +56,7 @@ function parseInput(body: unknown): AgentInput {
   if (raw.context !== undefined) input.context = String(raw.context ?? "");
   if (raw.tokenOpenAi !== undefined) input.tokenOpenAi = raw.tokenOpenAi === null ? null : String(raw.tokenOpenAi);
   if (raw.tokenAdk !== undefined) input.tokenAdk = raw.tokenAdk === null ? null : String(raw.tokenAdk);
+  if (raw.tokenJev !== undefined) input.tokenJev = raw.tokenJev === null ? null : String(raw.tokenJev);
   if (raw.resetMessage !== undefined) input.resetMessage = String(raw.resetMessage ?? "");
   if (raw.numberPhoneNotification !== undefined) {
     input.numberPhoneNotification = raw.numberPhoneNotification === null ? null : String(raw.numberPhoneNotification);
@@ -93,6 +94,8 @@ function parseInput(body: unknown): AgentInput {
         name: String(m.name ?? ""),
         descricao: String(m.descricao ?? ""),
         stageId: typeof m.stageId === "string" && m.stageId ? m.stageId : null,
+        kind: m.kind === "image" ? ("image" as const) : ("text" as const),
+        imageRules: m.imageRules,
       };
     });
   }

@@ -3,8 +3,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OptionsSelect } from "@/components/ui/options-select";
 import { Textarea } from "@/components/ui/textarea";
+import type { ImageRule, Metadado } from "@/lib/agents";
 
-export type MetadadoDraft = { key: string; id?: string; name: string; descricao: string; stageId: string | null };
+export type MetadadoDraft = {
+  key: string;
+  id?: string;
+  name: string;
+  descricao: string;
+  stageId: string | null;
+  kind: Metadado["kind"];
+  imageRules: ImageRule[];
+};
 
 export type StageOption = { id: string; label: string };
 
@@ -65,7 +74,8 @@ export function MetadadosEditor({ value, onChange, disabled, stageOptions = [] }
                 onValueChange={(stageId) => update(item.key, { stageId: stageId || null })}
                 disabled={disabled}
                 size="sm"
-                className="w-auto min-w-48 flex-1"
+                // The option text never wraps: without max-w-full a long "Pipeline › Etapa" pushes the card off screen.
+                className="w-auto min-w-0 max-w-full flex-1 basis-48"
                 aria-label="Coluna do quadro ao coletar"
                 options={[
                   { value: "", label: "Não mover" },
@@ -82,7 +92,9 @@ export function MetadadosEditor({ value, onChange, disabled, stageOptions = [] }
         variant="outline"
         size="sm"
         disabled={disabled}
-        onClick={() => onChange([...value, { key: crypto.randomUUID(), name: "", descricao: "", stageId: null }])}
+        onClick={() =>
+          onChange([...value, { key: crypto.randomUUID(), name: "", descricao: "", stageId: null, kind: "text", imageRules: [] }])
+        }
       >
         <Plus className="h-4 w-4" />
         Adicionar metadado

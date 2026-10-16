@@ -6,12 +6,16 @@ manda mensagem e a organização tem um agente ativo com context):
 
 {
   "jobId", "organizationId",
-  "agent": {"id", "name", "context", "tokenOpenAi", "tokenAdk",
-            "metadados": [{"name", "descricao"}], "documents": [url], "resetKeywords": [str], "resetMessage": str,
+  "agent": {"id", "name", "context", "tokenOpenAi", "tokenAdk", "tokenJev",
+            "metadados": [{"name", "descricao", "kind", "imageRules"}], "documents": [url], "resetKeywords": [str], "resetMessage": str,
             "splitMessages": bool},
   "contact": {"id", "chatId", "number", "name", "extras": {nome: valor}},
-  "messages": [{"messageId", "type", "text", "timestamp"}]
+  "messages": [{"messageId", "type", "text", "timestamp",
+                "media": {"bucket", "key", "mimetype", "link"} | null}]
 }
+
+As imagens do turno ficam no state da sessão (imagens_recebidas) para a tool
+validar_imagem, que confere cada uma com as regras do JEV do metadado pedido.
 
 A resposta vai para a fila outbound do worker-whatsapp, que envia no WhatsApp
 e notifica o backend. Os metadados coletados são gravados nos extras do
@@ -25,7 +29,7 @@ from src import config
 from src.infra.rabbitmq.connection import Reply
 from src.infra.pgvector.connection import delete_chunks
 from src.infra.backend.client import clear_contact_extras, merge_contact_extras
-from src.services.adk.infos import QUEBRA_MENSAGEM
+from src.services.adk.infos import QUEBRA_MENSAGEM, STATE_IMAGENS_RECEBIDAS
 from src.services.adk.runner import gerar_resposta, resetar_conversa
 from src.services.rag_ingestion.ingest import ingest_document
 
@@ -89,6 +93,15 @@ def _resetar(job: dict, organization_id: str, agent: dict, contact: dict) -> Rep
     return Reply(publishes=[_outbound(organization_id, contact, job, mensagem)])
 
 
+def imagens_recebidas(messages: list[dict]) -> list[dict]:
+    """Mídia das imagens do turno, como o backend mandou (bucket, key, link...)."""
+    return [
+        {**m["media"], "messageId": m.get("messageId")}
+        for m in messages
+        if m.get("type") == "image" and (m.get("media") or {}).get("key")
+    ]
+
+
 def handle_agent_reply(job: dict, _publish_now) -> Reply:
     agent = job.get("agent") or {}
     contact = job.get("contact") or {}
@@ -109,7 +122,7 @@ def handle_agent_reply(job: dict, _publish_now) -> Reply:
         return Reply()
 
     _log(job, f"agente '{agent.get('name')}' respondendo: {pergunta[:200]!r}")
-    resultado = gerar_resposta(pergunta, agent, contact)
+    resultado = gerar_resposta(pergunta, agent, contact, anexos={STATE_IMAGENS_RECEBIDAS: imagens_recebidas(messages)})
     _log(job, f"resposta: {resultado.texto[:200]!r} extras: {resultado.extras_coletados}")
 
     if resultado.extras_coletados:

@@ -32,6 +32,7 @@ def key_from_url(url: str) -> str | None:
     return url[len(prefix):] if url.startswith(prefix) else None
 
 
-def download_object(s3_key: str) -> bytes:
-    response = _get_client().get_object(Bucket=config.SEAWEEDFS_S3_BUCKET, Key=s3_key)
+def download_object(s3_key: str, bucket: str | None = None) -> bytes:
+    """`bucket` vem na mídia das mensagens do WhatsApp; sem ele, usa o dos documentos."""
+    response = _get_client().get_object(Bucket=bucket or config.SEAWEEDFS_S3_BUCKET, Key=s3_key)
     return response["Body"].read()

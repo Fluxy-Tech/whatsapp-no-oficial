@@ -1,14 +1,17 @@
 """
-Ferramentas do agente. As duas são montadas como closure porque dependem do
+Ferramentas do agente. São montadas como closure porque dependem do
 agente que está respondendo (metadados e documentos vêm no payload de cada
 mensagem, configurados na tela de agentes da plataforma).
 """
 
+import traceback
+
 from google.adk.tools import ToolContext
 
 from src.infra.backend import client as backend
-from src.services.adk.infos import STATE_EXTRAS
+from src.services.adk.infos import STATE_EXTRAS, STATE_IMAGENS_RECEBIDAS
 from src.services.adk.rag_graph import consultar_base_de_conhecimento
+from src.services.jev import imagens as jev_imagens
 from src.services.tokens import EMBEDDING_MODEL, UsoTokens, contar_tokens_embedding
 
 
@@ -81,3 +84,54 @@ def build_agendamento(organization_id: str, agent_id: str, chat_id: str):
         return {"ok": True, "inicio": corpo.get("startsAt"), "fim": corpo.get("endsAt"), "titulo": corpo.get("title")}
 
     return [consultar_horarios, agendar_reuniao]
+
+
+def build_validar_imagem(metadados: list[dict], api_key: str | None, uso: UsoTokens | None = None, chat_id: str | None = None):
+    """Metadados do tipo imagem: o JEV confere a imagem com as regras
+    cadastradas e, se todas passarem, o resumo + link vira o valor do metadado."""
+    por_minusculo = {m["name"].lower(): m for m in metadados}
+
+    def validar_imagem(tool_context: ToolContext, metadado: str, imagem: int = 1) -> dict:
+        """Valida uma imagem que o contato enviou para um dos metadados de
+        "Imagens que você precisa pedir". `metadado` é o nome exato da imagem
+        pedida e `imagem` qual imagem usar: 1 = a última enviada, 2 = a
+        penúltima, e assim por diante. Chame sempre que o contato mandar a
+        imagem pedida, antes de dizer se ela foi aceita."""
+        alvo = por_minusculo.get((metadado or "").strip().lower())
+        if not alvo:
+            return {"ok": False, "erro": f"Imagem desconhecida. Use uma destas: {', '.join(m['name'] for m in metadados)}."}
+        recebidas = tool_context.state.get(STATE_IMAGENS_RECEBIDAS) or []
+        try:
+            posicao = max(int(imagem), 1)
+        except (TypeError, ValueError):
+            posicao = 1
+        if posicao > len(recebidas):
+            return {"ok": False, "erro": "O contato ainda não enviou essa imagem nesta conversa. Peça a imagem."}
+        media = recebidas[-posicao]
+        if not api_key:
+            return {"ok": False, "erro": "A validação de imagens não está configurada. Diga que a equipe vai conferir a imagem."}
+
+        try:
+            resultado = jev_imagens.validar(api_key, alvo, media)
+        except Exception as error:
+            print(f"[jev] falha ao validar a imagem de '{alvo['name']}': {error}")
+            traceback.print_exc()
+            return {"ok": False, "erro": "Não consegui abrir a imagem agora. Peça para o contato enviar de novo."}
+        if uso is not None and resultado.uso:
+            uso.registrar(
+                "validation", "typesafe", resultado.uso["model"],
+                resultado.uso["input_tokens"], resultado.uso["output_tokens"], chat_id=chat_id,
+            )
+        print(f"[jev] imagem '{alvo['name']}': aprovada={resultado.aprovada} {resultado.motivo}")
+
+        regras = [{"regra": r.regra, "aprovada": r.aprovada, "resultado": r.resultado} for r in resultado.regras]
+        if not resultado.aprovada:
+            return {"ok": True, "aprovada": False, "motivo": resultado.motivo, "regras": regras}
+
+        # Mesmo caminho do registrar_metadado: o runner grava o que mudou nos extras.
+        extras = dict(tool_context.state.get(STATE_EXTRAS) or {})
+        extras[alvo["name"]] = jev_imagens.resumo(resultado, media.get("link"))
+        tool_context.state[STATE_EXTRAS] = extras
+        return {"ok": True, "aprovada": True, "regras": regras}
+
+    return validar_imagem

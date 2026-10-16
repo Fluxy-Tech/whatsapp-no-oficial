@@ -321,6 +321,8 @@ model Agent {
   // API keys, encrypted at rest (AES-256-GCM, see src/lib/crypto.ts).
   tokenOpenAi             String?
   tokenAdk                String?
+  // JEV (TypeSafe System One): validates the images of "image" metadados.
+  tokenJev                String?
   // RAG source files (S3 or public links), chunked into pgvector by AI-Worker.
   documents               String[]     @default([])
   // Ingestion state per document url: { [url]: { status, chunks?, error?, updatedAt } }
@@ -375,16 +377,22 @@ model Agent {
 // A piece of information the agent must collect from the contact. Collected
 // values are stored per contact (worker-whatsapp contact.extras[name]).
 model Metadado {
-  id        String         @id @default(cuid())
-  agentId   String
-  agent     Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  name      String
-  descricao String         @default("")
+  id         String         @id @default(cuid())
+  agentId    String
+  agent      Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  name       String
+  descricao  String         @default("")
+  // "text": the agent asks and saves what the contact says (registrar_metadado).
+  // "image": the agent asks for an image (descricao says which and how) and
+  // JEV checks it against imageRules; when every rule passes, a summary plus a
+  // link to the image is saved. Rules: see src/services/image-rules.ts.
+  kind       String         @default("text")
+  imageRules Json           @default("[]")
   // When this metadado is collected the lead moves to this stage.
-  stageId   String?
-  stage     PipelineStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  stageId    String?
+  stage      PipelineStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
 
   @@unique([agentId, name])
   @@map("metadado")

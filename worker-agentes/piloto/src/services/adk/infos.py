@@ -5,8 +5,12 @@ from src.config import AGENT_TIMEZONE, APP_NAME, GOOGLE_ADK_MODEL
 # turno e grava só o que mudou nos extras do contato.
 STATE_EXTRAS = "extras_coletados"
 
+# Imagens que o contato mandou (mídia do payload do backend, as mais recentes
+# por último). A tool validar_imagem valida uma delas contra as regras do JEV.
+STATE_IMAGENS_RECEBIDAS = "imagens_recebidas"
+
 # Marcador de quebra: com splitMessages ligado, o agente separa a resposta com
 # ele e cada parte vai como uma mensagem do WhatsApp.
 QUEBRA_MENSAGEM = "[QB]"
 
-__all__ = ["AGENT_TIMEZONE", "APP_NAME", "GOOGLE_ADK_MODEL", "QUEBRA_MENSAGEM", "STATE_EXTRAS"]
+__all__ = ["AGENT_TIMEZONE", "APP_NAME", "GOOGLE_ADK_MODEL", "QUEBRA_MENSAGEM", "STATE_EXTRAS", "STATE_IMAGENS_RECEBIDAS"]

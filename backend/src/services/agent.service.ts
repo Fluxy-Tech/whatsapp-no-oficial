@@ -4,6 +4,7 @@ import { whatsappEvents } from "../lib/events";
 import { prisma } from "../lib/prisma";
 import { AGENT_REPLY_QUEUE_SUFFIX, AI_QUEUES, agentQueueKey, publish } from "../lib/rabbitmq";
 import { deleteIfStoredDocument, uploadAgentDocument } from "../lib/s3";
+import { imageRulesOf, normalizeImageRules } from "./image-rules";
 
 export class AgentError extends Error {
   constructor(
@@ -23,7 +24,17 @@ export type DocumentStatus = {
 
 type AgentWithMetadados = Agent & { metadados: Metadado[] };
 
-export type MetadadoInput = { id?: string; name: string; descricao?: string; stageId?: string | null };
+export type MetadadoKind = "text" | "image";
+
+export type MetadadoInput = {
+  id?: string;
+  name: string;
+  descricao?: string;
+  stageId?: string | null;
+  /** "image": the agent asks for an image and JEV validates it with imageRules. */
+  kind?: MetadadoKind;
+  imageRules?: unknown;
+};
 
 export type SchedulingInput = {
   enabled?: boolean;
@@ -45,6 +56,7 @@ export type AgentInput = {
   /** undefined = keep, "" / null = remove, string = replace. */
   tokenOpenAi?: string | null;
   tokenAdk?: string | null;
+  tokenJev?: string | null;
   /** Full list: metadados missing from it are deleted. */
   metadados?: MetadadoInput[];
   /** Messages that reset the conversation when sent alone (full list). */
@@ -117,6 +129,7 @@ export function agentView(agent: AgentWithMetadados, activeAgentId: string | nul
     context: agent.context,
     tokenOpenAi: describeSecret(agent.tokenOpenAi),
     tokenAdk: describeSecret(agent.tokenAdk),
+    tokenJev: describeSecret(agent.tokenJev),
     documents: agent.documents,
     resetKeywords: agent.resetKeywords,
     resetMessage: agent.resetMessage,
@@ -140,7 +153,14 @@ export function agentView(agent: AgentWithMetadados, activeAgentId: string | nul
     metadados: agent.metadados
       .slice()
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-      .map((m) => ({ id: m.id, name: m.name, descricao: m.descricao, stageId: m.stageId })),
+      .map((m) => ({
+        id: m.id,
+        name: m.name,
+        descricao: m.descricao,
+        stageId: m.stageId,
+        kind: m.kind as MetadadoKind,
+        imageRules: imageRulesOf(m.imageRules),
+      })),
     isOrganizationAgent: activeAgentId === agent.id,
     canAnswer: canAnswer(agent),
     createdAt: agent.createdAt,
@@ -160,12 +180,18 @@ async function loadAgent(organizationId: string, agentId: string) {
 }
 
 function normalizeMetadados(metadados: MetadadoInput[]) {
-  const normalized = metadados.map((m) => ({
-    id: m.id,
-    name: (m.name ?? "").trim(),
-    descricao: (m.descricao ?? "").trim(),
-    stageId: m.stageId ?? null,
-  }));
+  const normalized = metadados.map((m) => {
+    const name = (m.name ?? "").trim();
+    const kind: MetadadoKind = m.kind === "image" ? "image" : "text";
+    return {
+      id: m.id,
+      name,
+      descricao: (m.descricao ?? "").trim(),
+      stageId: m.stageId ?? null,
+      kind,
+      imageRules: (kind === "image" ? normalizeImageRules(m.imageRules, name) : []) as Prisma.InputJsonValue,
+    };
+  });
 
   if (normalized.some((m) => !m.name)) throw new AgentError(400, "Every metadado needs a name");
   const names = normalized.map((m) => m.name.toLowerCase());
@@ -173,7 +199,7 @@ function normalizeMetadados(metadados: MetadadoInput[]) {
   return normalized;
 }
 
-type TokenKind = "openai" | "google";
+type TokenKind = "openai" | "google" | "jev";
 
 const KEY_CHECK_TIMEOUT_MS = 8_000;
 
@@ -186,6 +212,9 @@ async function validateToken(kind: TokenKind, token: string) {
   }
   if (kind === "openai" && !token.startsWith("sk-")) {
     throw new AgentError(400, 'O token OpenAI deve começar com "sk-". Se for uma chave do Google, coloque no campo Token Google (ADK).');
+  }
+  if (kind === "jev" && (token.startsWith("sk-") || token.startsWith("AIza"))) {
+    throw new AgentError(400, "O token JEV parece ser de outro provedor. Use a chave criada em console.typesafe.ai/keys.");
   }
   if (kind === "google") await checkGoogleKey(token);
 }
@@ -335,6 +364,7 @@ export async function createAgent(organizationId: string, input: AgentInput) {
       context: input.context ?? "",
       tokenOpenAi: (await tokenUpdate("openai", input.tokenOpenAi)) ?? null,
       tokenAdk: (await tokenUpdate("google", input.tokenAdk)) ?? null,
+      tokenJev: (await tokenUpdate("jev", input.tokenJev)) ?? null,
       resetKeywords: normalizeResetKeywords(input.resetKeywords ?? []),
       resetMessage: resetMessageOf(input.resetMessage),
       numberPhoneNotification: phoneNotificationOf(input.numberPhoneNotification),
@@ -346,7 +376,13 @@ export async function createAgent(organizationId: string, input: AgentInput) {
       leadAssigneeId: input.leadAssigneeId ?? null,
       ...schedulingData(input.scheduling),
       metadados: {
-        create: metadados.map(({ name, descricao, stageId }) => ({ name, descricao, stageId })),
+        create: metadados.map(({ name, descricao, stageId, kind, imageRules }) => ({
+          name,
+          descricao,
+          stageId,
+          kind,
+          imageRules,
+        })),
       },
     },
     include: { metadados: true },
@@ -401,6 +437,8 @@ export async function updateAgent(organizationId: string, agentId: string, input
   if (tokenOpenAi !== undefined) data.tokenOpenAi = tokenOpenAi;
   const tokenAdk = await tokenUpdate("google", input.tokenAdk);
   if (tokenAdk !== undefined) data.tokenAdk = tokenAdk;
+  const tokenJev = await tokenUpdate("jev", input.tokenJev);
+  if (tokenJev !== undefined) data.tokenJev = tokenJev;
 
   await prisma.$transaction(async (tx) => {
     await tx.agent.update({ where: { id: agentId }, data });
@@ -418,10 +456,19 @@ export async function updateAgent(organizationId: string, agentId: string, input
         if (m.id && existingIds.has(m.id)) {
           await tx.metadado.update({
             where: { id: m.id },
-            data: { name: m.name, descricao: m.descricao, stageId: m.stageId },
+            data: { name: m.name, descricao: m.descricao, stageId: m.stageId, kind: m.kind, imageRules: m.imageRules },
           });
         } else {
-          await tx.metadado.create({ data: { agentId, name: m.name, descricao: m.descricao, stageId: m.stageId } });
+          await tx.metadado.create({
+            data: {
+              agentId,
+              name: m.name,
+              descricao: m.descricao,
+              stageId: m.stageId,
+              kind: m.kind,
+              imageRules: m.imageRules,
+            },
+          });
         }
       }
     }

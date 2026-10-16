@@ -25,6 +25,17 @@ router.get("/chats/:chatId/messages/:messageId/media", async (req, res) => {
   res.json(await getMessageMediaUrl(organizationId, req.params.messageId));
 });
 
+// Link saved in the extras of "image" metadados: signed URLs expire, so the
+// link points here and is redirected to a fresh one when someone opens it.
+router.get("/chats/:chatId/messages/:messageId/media/open", async (req, res) => {
+  const organizationId = getActiveOrgId(req);
+  if (!organizationId) return res.status(400).json({ error: "No active organization selected" });
+
+  const media = await getMessageMediaUrl(organizationId, req.params.messageId);
+  if (!media.url) return res.status(404).json({ error: "Media not found" });
+  res.redirect(media.url);
+});
+
 // Sending is asynchronous: the message goes to the worker's outbound queue
 // and shows up in the chat once the worker reports "message.sent".
 router.post("/chats/:chatId/send", requirePermission("conversas", "edit"), async (req, res) => {

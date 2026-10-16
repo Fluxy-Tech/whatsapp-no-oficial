@@ -1,12 +1,15 @@
 """
 Monta o agente do ADK a cada mensagem a partir do payload do backend:
 
-  agent:   {id, name, context, tokenOpenAi, tokenAdk, metadados: [{name, descricao}], documents: [url]}
+  agent:   {id, name, context, tokenOpenAi, tokenAdk, tokenJev,
+            metadados: [{name, descricao, kind: "text" | "image", imageRules}], documents: [url]}
   contact: {id, chatId, number, name, extras: {nome do metadado: valor}}
 
 `context` é o prompt definido pela empresa na plataforma. A única função fixa
 do agente é coletar os metadados configurados (registrar_metadado); a busca
 nos documentos (consultar_conhecimento) entra quando o agente tem documentos.
+Metadados do tipo "image" são imagens que o agente pede ao contato; o JEV
+confere cada uma com as regras cadastradas (validar_imagem).
 """
 
 from datetime import datetime
@@ -18,7 +21,8 @@ from google.adk.models import Gemini
 from src import config
 from src.services.adk.historico import limitar_historico
 from src.services.adk.infos import AGENT_TIMEZONE, GOOGLE_ADK_MODEL, QUEBRA_MENSAGEM
-from src.services.adk.tools import build_consultar_conhecimento, build_registrar_metadado
+from src.services.adk.tools import build_consultar_conhecimento, build_registrar_metadado, build_validar_imagem
+from src.services.jev.imagens import metadados_de_imagem
 
 BASE_INSTRUCTION = """
 Você é {nome}, atendendo os clientes da empresa pelo WhatsApp.
@@ -51,6 +55,7 @@ ela é, o que você pode e não pode falar, e como deve se comunicar). Siga-as.
 
 {dados_contato}
 {coleta}
+{imagens}
 {rag}
 {quebra}
 """
@@ -64,6 +69,23 @@ Pule os que já estão em "Sobre este contato". Assim que o contato informar ou
 confirmar um dado, chame registrar_metadado com o nome exato do dado e o valor.
 
 {itens}
+"""
+
+IMAGENS_INSTRUCTION = """
+## Imagens que você precisa pedir
+
+Peça ao contato as imagens abaixo, uma de cada vez e no momento certo, como
+descrito em cada uma. Pule as que já estão em "Sobre este contato".
+
+{itens}
+
+Quando o contato mandar uma imagem ("[O contato enviou uma imagem]"), chame
+validar_imagem com o nome da imagem que você pediu — isso vale mais que a regra
+das mensagens entre colchetes. Use o resultado:
+- aprovada=true: agradeça e siga a conversa.
+- aprovada=false: explique com suas palavras o que não passou (veja "motivo" e
+  "regras") e peça outra imagem. Nunca fale em JEV, regras ou percentuais.
+Nunca diga que uma imagem foi aceita sem a ferramenta retornar aprovada=true.
 """
 
 RAG_INSTRUCTION = """
@@ -103,7 +125,9 @@ def metadados_do_agente(agent_info: dict) -> list[dict]:
     for item in agent_info.get("metadados") or []:
         nome = (item.get("name") or "").strip()
         if nome:
-            metadados.append({"name": nome, "descricao": (item.get("descricao") or "").strip()})
+            metadados.append(
+                {"name": nome, "descricao": (item.get("descricao") or "").strip(), "kind": item.get("kind") or "text"}
+            )
     return metadados
 
 
@@ -136,6 +160,17 @@ def _coleta(contact: dict, metadados: list[dict]) -> str:
     return COLETA_INSTRUCTION.format(itens="\n".join(itens))
 
 
+def _imagens(contact: dict, imagens: list[dict]) -> str:
+    if not imagens:
+        return ""
+    extras = contact.get("extras") or {}
+    itens = []
+    for m in imagens:
+        status = " (já recebida)" if str(extras.get(m["name"]) or "").strip() else ""
+        itens.append(f"- {m['name']}{status}: {(m.get('descricao') or '').strip() or 'sem instruções adicionais'}")
+    return IMAGENS_INSTRUCTION.format(itens="\n".join(itens))
+
+
 def _modelo(agent_info: dict):
     """Cada agente usa o próprio token do Google (tokenAdk). Passar a key no
     client do modelo (e não em os.environ) permite atender agentes de
@@ -148,7 +183,9 @@ def _modelo(agent_info: dict):
 
 def build_agent(agent_info: dict, contact: dict | None = None) -> Agent:
     contact = contact or {}
-    metadados = metadados_do_agente(agent_info)
+    # Metadados de texto são coletados com registrar_metadado; os de imagem, com validar_imagem.
+    metadados = [m for m in metadados_do_agente(agent_info) if m["kind"] != "image"]
+    imagens = metadados_de_imagem(agent_info)
     tem_documentos = bool(agent_info.get("documents"))
 
     instruction = BASE_INSTRUCTION.format(
@@ -157,6 +194,7 @@ def build_agent(agent_info: dict, contact: dict | None = None) -> Agent:
         context=(agent_info.get("context") or "").strip(),
         dados_contato=_dados_contato(contact, metadados),
         coleta=_coleta(contact, metadados),
+        imagens=_imagens(contact, imagens),
         rag=RAG_INSTRUCTION if tem_documentos else "",
         quebra=QUEBRA_INSTRUCTION.format(marcador=QUEBRA_MENSAGEM) if agent_info.get("splitMessages") else "",
     )
@@ -164,6 +202,8 @@ def build_agent(agent_info: dict, contact: dict | None = None) -> Agent:
     tools = []
     if metadados:
         tools.append(build_registrar_metadado(metadados))
+    if imagens:
+        tools.append(build_validar_imagem(imagens, agent_info.get("tokenJev"), contact.get("chatId")))
     if tem_documentos:
         tools.append(build_consultar_conhecimento(agent_info["id"], agent_info.get("tokenOpenAi")))
 

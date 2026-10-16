@@ -13,8 +13,12 @@ manda mensagem e a organização tem um agente ativo com context):
             "numberPhoneNotification": str | null, "descriptionNotification": str, "splitMessages": bool,
             "schedulingEnabled": bool, "meetingDurationMinutes": int},
   "contact": {"id", "chatId", "number", "name", "extras": {nome: valor}},
-  "messages": [{"messageId", "type", "text", "timestamp"}]
+  "messages": [{"messageId", "type", "text", "timestamp",
+                "media": {"bucket", "key", "mimetype", "link"} | null}]
 }
+
+As imagens do turno ficam no state da sessão (imagens_recebidas) para a tool
+validar_imagem, que confere cada uma com as regras do JEV do metadado pedido.
 
 A resposta vai para a fila outbound do worker-whatsapp, que envia no WhatsApp
 e notifica o backend. Com organization.agentMessageDelaySeconds, as partes de
@@ -36,7 +40,7 @@ from src import config
 from src.infra.rabbitmq.connection import Reply, resumo_erro
 from src.infra.pgvector.connection import delete_chunks
 from src.infra.backend.client import clear_contact_extras, merge_contact_extras
-from src.services.adk.infos import QUEBRA_MENSAGEM
+from src.services.adk.infos import QUEBRA_MENSAGEM, STATE_IMAGENS_RECEBIDAS
 from src.services.adk.notificacao import coleta_concluida, gerar_notificacao, numero_notificacao
 from src.services.adk.runner import gerar_resposta, resetar_conversa
 from src.services.rag_ingestion.ingest import ingest_document
@@ -128,6 +132,15 @@ def _resetar(job: dict, organization_id: str, agent: dict, contact: dict) -> Rep
     return Reply(publishes=[_outbound(organization_id, contact, job, mensagem)])
 
 
+def imagens_recebidas(messages: list[dict]) -> list[dict]:
+    """Mídia das imagens do turno, como o backend mandou (bucket, key, link...)."""
+    return [
+        {**m["media"], "messageId": m.get("messageId")}
+        for m in messages
+        if m.get("type") == "image" and (m.get("media") or {}).get("key")
+    ]
+
+
 def handle_agent_reply(job: dict, publish_now) -> Reply:
     agent = job.get("agent") or {}
     contact = job.get("contact") or {}
@@ -213,7 +226,13 @@ def _responder(
     job: dict, organization_id: str, agent: dict, contact: dict, pergunta: str, uso: UsoTokens, publish_now
 ) -> Reply:
     # As ferramentas de agendamento precisam saber de qual organização é a agenda.
-    resultado = gerar_resposta(pergunta, {**agent, "organizationId": organization_id}, contact, uso)
+    resultado = gerar_resposta(
+        pergunta,
+        {**agent, "organizationId": organization_id},
+        contact,
+        uso,
+        anexos={STATE_IMAGENS_RECEBIDAS: imagens_recebidas(job.get("messages") or [])},
+    )
     _log(job, f"resposta: {resultado.texto[:200]!r} extras: {resultado.extras_coletados}")
 
     if resultado.extras_coletados:

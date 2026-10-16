@@ -7,8 +7,33 @@ export type DocumentStatus = {
   updatedAt: string;
 };
 
-/** stageId: kanban column the lead moves to when this metadado is collected. */
-export type Metadado = { id: string; name: string; descricao: string; stageId: string | null };
+/**
+ * One JEV question about an image. The image is approved when every rule passes:
+ * noul when P(yes) >= min, choice when the chosen option is accepted, score when score >= min.
+ */
+export type ImageRule =
+  | { id: string; label: string; type: "noul"; instructions: string; criteria: { true: string; false: string }; min: number }
+  | {
+      id: string;
+      label: string;
+      type: "choice";
+      instructions: string;
+      options: { name: string; description: string; accepted: boolean }[];
+    }
+  | { id: string; label: string; type: "score"; instructions: string; levels: string[]; min: number };
+
+/**
+ * stageId: kanban column the lead moves to when this metadado is collected.
+ * kind "image": the agent asks for an image (descricao) and JEV validates it with imageRules.
+ */
+export type Metadado = {
+  id: string;
+  name: string;
+  descricao: string;
+  stageId: string | null;
+  kind: "text" | "image";
+  imageRules: ImageRule[];
+};
 
 export type AgentScheduling = {
   enabled: boolean;
@@ -34,6 +59,8 @@ export type Agent = {
   context: string;
   tokenOpenAi: SecretInfo;
   tokenAdk: SecretInfo;
+  /** JEV (TypeSafe System One): validates the images of "image" metadados. */
+  tokenJev: SecretInfo;
   documents: string[];
   /** Messages that reset the conversation (history + extras) when sent alone. */
   resetKeywords: string[];
