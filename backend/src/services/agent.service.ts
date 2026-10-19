@@ -36,6 +36,22 @@ export type MetadadoInput = {
   imageRules?: unknown;
 };
 
+/** RGBS: answer split with [QB], each part sent after a wait by its size. */
+export type RgbsInput = {
+  enabled?: boolean;
+  timeSmall?: unknown;
+  timeMedium?: unknown;
+  timeLarge?: unknown;
+};
+
+// Seconds of wait before each part, by size. The minimums are repeated in the
+// frontend (RGBS_TIMES) and in the AI-Workers (RGBS_MIN_SECONDS): keep them equal.
+export const RGBS_TIMES = {
+  timeSmall: { min: 1, max: 300, label: "mensagem pequena" },
+  timeMedium: { min: 4, max: 300, label: "mensagem média" },
+  timeLarge: { min: 8, max: 300, label: "mensagem grande" },
+} as const;
+
 export type SchedulingInput = {
   enabled?: boolean;
   meetingDurationMinutes?: number;
@@ -67,8 +83,7 @@ export type AgentInput = {
   numberPhoneNotification?: string | null;
   /** What the agent must write in that message; empty = default description. */
   descriptionNotification?: string;
-  /** Answer split with [QB], one WhatsApp message per part. */
-  splitMessages?: boolean;
+  rgbs?: RgbsInput;
   /** Kanban: create the lead on the first message, in leadStageId. */
   leadOnFirstMessage?: boolean;
   leadStageId?: string | null;
@@ -135,7 +150,12 @@ export function agentView(agent: AgentWithMetadados, activeAgentId: string | nul
     resetMessage: agent.resetMessage,
     numberPhoneNotification: agent.numberPhoneNotification,
     descriptionNotification: agent.descriptionNotification,
-    splitMessages: agent.splitMessages,
+    rgbs: {
+      enabled: agent.rgbsEnabled,
+      timeSmall: agent.timeSmall,
+      timeMedium: agent.timeMedium,
+      timeLarge: agent.timeLarge,
+    },
     leadOnFirstMessage: agent.leadOnFirstMessage,
     leadStageId: agent.leadStageId,
     completedStageId: agent.completedStageId,
@@ -296,6 +316,24 @@ type SchedulingData = {
   maxEventsPerSlot?: number | null;
 };
 
+type RgbsData = Partial<Pick<Agent, "rgbsEnabled" | "timeSmall" | "timeMedium" | "timeLarge">>;
+
+function rgbsData(input: RgbsInput | undefined): RgbsData {
+  if (!input) return {};
+  const data: RgbsData = {};
+  if (input.enabled !== undefined) data.rgbsEnabled = input.enabled;
+  for (const field of ["timeSmall", "timeMedium", "timeLarge"] as const) {
+    if (input[field] === undefined) continue;
+    const seconds = Number(input[field]);
+    const { min, max, label } = RGBS_TIMES[field];
+    if (!Number.isInteger(seconds) || seconds < min || seconds > max) {
+      throw new AgentError(400, `O tempo da ${label} deve ser um número inteiro entre ${min} e ${max} segundos`);
+    }
+    data[field] = seconds;
+  }
+  return data;
+}
+
 function schedulingData(input: SchedulingInput | undefined): SchedulingData {
   if (!input) return {};
   const data: SchedulingData = {};
@@ -369,7 +407,7 @@ export async function createAgent(organizationId: string, input: AgentInput) {
       resetMessage: resetMessageOf(input.resetMessage),
       numberPhoneNotification: phoneNotificationOf(input.numberPhoneNotification),
       descriptionNotification: descriptionNotificationOf(input.descriptionNotification),
-      splitMessages: input.splitMessages ?? false,
+      ...rgbsData(input.rgbs),
       leadOnFirstMessage: input.leadOnFirstMessage ?? false,
       leadStageId: input.leadStageId ?? null,
       completedStageId: input.completedStageId ?? null,
@@ -415,7 +453,7 @@ export async function updateAgent(organizationId: string, agentId: string, input
   if (input.descriptionNotification !== undefined) {
     data.descriptionNotification = descriptionNotificationOf(input.descriptionNotification);
   }
-  if (input.splitMessages !== undefined) data.splitMessages = input.splitMessages;
+  Object.assign(data, rgbsData(input.rgbs));
   if (input.leadOnFirstMessage !== undefined) data.leadOnFirstMessage = input.leadOnFirstMessage;
   await validateStageIds(organizationId, [
     input.leadStageId,

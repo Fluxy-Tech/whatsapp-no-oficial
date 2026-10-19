@@ -36,7 +36,7 @@ def main() -> None:
         "name": args.nome,
         "context": args.prompt,
         "metadados": [{"name": nome, "descricao": ""} for nome in args.metadado],
-        "splitMessages": args.quebrar,
+        "rgbs": {"enabled": args.quebrar},
     }
     contact = {"id": args.contato, "chatId": "5500000000000@c.us", "name": "Teste", "extras": {}}
 

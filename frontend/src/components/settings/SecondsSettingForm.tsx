@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 type SecondsSettingFormProps = {
   id: string;
   /** Field of PATCH /api/organizations/current/settings. */
-  field: "messageWaitSeconds" | "agentMessageDelaySeconds";
+  field: "messageWaitSeconds";
   label: string;
   help: ReactNode;
   min: number;

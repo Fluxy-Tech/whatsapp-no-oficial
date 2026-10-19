@@ -295,3 +295,88 @@ export function SchedulingCard({ value, onChange, disabled }: SchedulingCardProp
     </Card>
   );
 }
+
+export type RgbsDraft = {
+  enabled: boolean;
+  timeSmall: string;
+  timeMedium: string;
+  timeLarge: string;
+};
+
+// Same limits as the backend (RGBS_TIMES) and the AI-Workers (RGBS_MIN_SECONDS).
+export const RGBS_TIMES = [
+  { field: "timeSmall", label: "Mensagem pequena", help: "até 40 caracteres", min: 1, max: 300 },
+  { field: "timeMedium", label: "Mensagem média", help: "de 41 a 100 caracteres", min: 4, max: 300 },
+  { field: "timeLarge", label: "Mensagem grande", help: "acima de 100 caracteres", min: 8, max: 300 },
+] as const;
+
+function validTime(value: string, min: number, max: number) {
+  const seconds = Number(value);
+  return value.trim() !== "" && Number.isInteger(seconds) && seconds >= min && seconds <= max;
+}
+
+/** Every time inside its limits (checked even with RGBS off: the times are saved). */
+export function rgbsValid(value: RgbsDraft) {
+  return RGBS_TIMES.every(({ field, min, max }) => validTime(value[field], min, max));
+}
+
+type RgbsCardProps = {
+  value: RgbsDraft;
+  onChange: (value: RgbsDraft) => void;
+  disabled: boolean;
+};
+
+export function RgbsCard({ value, onChange, disabled }: RgbsCardProps) {
+  const fieldsDisabled = disabled || !value.enabled;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>RGBS (mensagens quebradas)</CardTitle>
+        <CardDescription>
+          O agente recebe a mensagem, gera a resposta, quebra em mensagens curtas e envia uma de cada vez, como uma
+          pessoa digitando no WhatsApp. Antes de cada mensagem ele espera um tempo que depende do tamanho dela.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <Switch
+            checked={value.enabled}
+            onCheckedChange={(enabled) => onChange({ ...value, enabled })}
+            disabled={disabled}
+            aria-label="RGBS ativo"
+          />
+          {value.enabled ? "Quebrar as respostas em várias mensagens" : "Responder em uma única mensagem"}
+        </label>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          {RGBS_TIMES.map(({ field, label, help, min, max }) => {
+            const invalid = !validTime(value[field], min, max);
+            return (
+              <div key={field} className="space-y-2">
+                <Label htmlFor={`rgbs-${field}`}>{label} (segundos)</Label>
+                <Input
+                  id={`rgbs-${field}`}
+                  type="number"
+                  min={min}
+                  max={max}
+                  step={1}
+                  value={value[field]}
+                  onChange={(e) => onChange({ ...value, [field]: e.target.value })}
+                  disabled={fieldsDisabled}
+                  aria-invalid={invalid}
+                />
+                <p className={cn("text-xs", invalid ? "text-destructive" : "text-muted-foreground")}>
+                  {help}. De {min} a {max} segundos.
+                </p>
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          O tempo é a espera antes de enviar cada parte. Desligar o RGBS mantém os tempos salvos.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}

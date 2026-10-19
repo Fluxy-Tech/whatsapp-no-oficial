@@ -59,17 +59,6 @@ export function SettingsPage() {
             disabled={!canEdit || !current}
             onSaved={refresh}
           />
-          <SecondsSettingForm
-            id="organization-agent-message-delay"
-            field="agentMessageDelaySeconds"
-            label="Intervalo entre as mensagens do agente (segundos)"
-            help="Quando o agente divide a resposta em várias mensagens, ele espera este tempo depois de enviar cada uma antes de mandar a próxima. Use 0 para enviar todas de uma vez."
-            min={0}
-            max={60}
-            initialValue={current?.organization.agentMessageDelaySeconds ?? 0}
-            disabled={!canEdit || !current}
-            onSaved={refresh}
-          />
         </CardContent>
       </Card>
 

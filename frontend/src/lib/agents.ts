@@ -35,6 +35,17 @@ export type Metadado = {
   imageRules: ImageRule[];
 };
 
+/** RGBS: answer split with [QB], each part sent after a wait (seconds) by its size. */
+export type AgentRgbs = {
+  enabled: boolean;
+  /** Up to 40 characters. */
+  timeSmall: number;
+  /** 41 to 100 characters. */
+  timeMedium: number;
+  /** Over 100 characters. */
+  timeLarge: number;
+};
+
 export type AgentScheduling = {
   enabled: boolean;
   meetingDurationMinutes: number;
@@ -70,8 +81,7 @@ export type Agent = {
   numberPhoneNotification: string | null;
   /** What the agent writes in that message (e.g. a report of the conversation). */
   descriptionNotification: string;
-  /** Answer split with [QB]: each part is sent as its own WhatsApp message. */
-  splitMessages: boolean;
+  rgbs: AgentRgbs;
   /** Kanban: create the lead on the first message, in leadStageId. */
   leadOnFirstMessage: boolean;
   leadStageId: string | null;

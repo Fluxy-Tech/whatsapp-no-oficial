@@ -8,7 +8,7 @@ manda mensagem e a organização tem um agente ativo com context):
   "jobId", "organizationId",
   "agent": {"id", "name", "context", "tokenOpenAi", "tokenAdk",
             "metadados": [{"name", "descricao"}], "documents": [url], "resetKeywords": [str], "resetMessage": str,
-            "numberPhoneNotification": str | null, "descriptionNotification": str, "splitMessages": bool,
+            "numberPhoneNotification": str | null, "descriptionNotification": str, "rgbs": {"enabled": bool, "timeSmall": int, "timeMedium": int, "timeLarge": int},
             "schedulingEnabled": bool, "meetingDurationMinutes": int},
   "contact": {"id", "chatId", "number", "name", "extras": {nome: valor}},
   "messages": [{"messageId", "type", "text", "timestamp"}]
@@ -18,8 +18,9 @@ Fluxo de uma resposta:
 1. reset (default): palavra de reset encerra a conversa sem chamar o modelo.
 2. turno (núcleo): src/agent/core/runner.py gera a resposta.
 3. metadados coletados vão para os extras do contato (backend).
-4. resposta vai para a fila outbound do worker-whatsapp, quebrada em várias
-   mensagens se o agente tiver splitMessages (default).
+4. resposta vai para a fila outbound do worker-whatsapp; com o RGBS do agente
+   (default), quebrada em várias mensagens enviadas uma a uma, cada uma após
+   uma espera pelo tamanho.
 5. notificação (default): se o turno completou os metadados e o agente tem
    numberPhoneNotification, uma mensagem para esse número também é enviada.
 """
@@ -30,7 +31,7 @@ from src import config
 from src.agent.core.runner import ResultadoResposta, gerar_resposta, resetar_conversa
 from src.agent.core.turno import Turno
 from src.agent.defaults.notificacao import coleta_concluida, gerar_notificacao, numero_notificacao
-from src.agent.defaults.quebra import partes_da_resposta
+from src.agent.defaults.quebra import enviar_partes, partes_da_resposta, rgbs_ativo
 from src.agent.defaults.reset import mensagem_de_reset, pediu_reset
 from src.infra.backend.client import clear_contact_extras, merge_contact_extras
 from src.infra.pgvector.connection import delete_chunks
@@ -72,7 +73,7 @@ def _resetar(job: dict, organization_id: str, agent: dict, contact: dict) -> Rep
     return Reply(publishes=[_outbound(organization_id, contact["chatId"], mensagem_de_reset(agent), _id_da_parte(job, 0))])
 
 
-def handle_agent_reply(job: dict, _publish_now) -> Reply:
+def handle_agent_reply(job: dict, publish_now) -> Reply:
     agent = job.get("agent") or {}
     contact = job.get("contact") or {}
     organization_id = job.get("organizationId")
@@ -94,13 +95,13 @@ def handle_agent_reply(job: dict, _publish_now) -> Reply:
     _log(job, f"agente '{agent.get('name')}' respondendo: {pergunta[:200]!r}")
     turno = Turno(organization_id=organization_id, agent=agent, contact=contact, uso=UsoTokens())
     try:
-        return _responder(job, turno, pergunta)
+        return _responder(job, turno, pergunta, publish_now)
     finally:
         # Mesmo se algo falhar depois, os tokens já gastos ficam registrados.
         turno.uso.enviar(turno.agent_id)
 
 
-def _responder(job: dict, turno: Turno, pergunta: str) -> Reply:
+def _responder(job: dict, turno: Turno, pergunta: str, publish_now) -> Reply:
     resultado = gerar_resposta(pergunta, turno)
     _log(job, f"resposta: {resultado.texto[:200]!r} extras: {resultado.extras_coletados}")
 
@@ -114,10 +115,15 @@ def _responder(job: dict, turno: Turno, pergunta: str) -> Reply:
             traceback.print_exc()
 
     # Publicadas em ordem; o worker-whatsapp envia uma por vez (prefetch 1).
-    partes = partes_da_resposta(resultado.texto, bool(turno.agent.get("splitMessages")))
+    partes = partes_da_resposta(resultado.texto, rgbs_ativo(turno.agent))
     publishes = [
         _outbound(turno.organization_id, turno.chat_id, texto, _id_da_parte(job, i)) for i, texto in enumerate(partes)
     ]
+    if rgbs_ativo(turno.agent):
+        # RGBS: as partes saem em segundo plano, cada uma após a sua espera.
+        chave = f"{turno.organization_id}:{turno.chat_id}"
+        enviar_partes(chave, publishes, turno.agent.get("rgbs") or {}, publish_now, lambda msg: _log(job, msg))
+        publishes = []
 
     notificacao = _notificacao(job, turno, resultado)
     if notificacao:

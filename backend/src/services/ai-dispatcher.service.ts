@@ -100,8 +100,6 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
       jobId,
       organizationId,
       organization: {
-        // Pause between the messages of one answer.
-        agentMessageDelaySeconds: organization.agentMessageDelaySeconds,
         // Used when the agent fails to answer.
         agentFailureMessage: organization.agentFailureMessage,
         alertPhoneNumber: organization.alertPhoneNumber,
@@ -124,7 +122,12 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
         resetMessage: agent.resetMessage,
         numberPhoneNotification: agent.numberPhoneNotification,
         descriptionNotification: agent.descriptionNotification,
-        splitMessages: agent.splitMessages,
+        rgbs: {
+          enabled: agent.rgbsEnabled,
+          timeSmall: agent.timeSmall,
+          timeMedium: agent.timeMedium,
+          timeLarge: agent.timeLarge,
+        },
         schedulingEnabled: agent.schedulingEnabled,
         meetingDurationMinutes: agent.meetingDurationMinutes,
       },

@@ -8,8 +8,11 @@ import type { Member } from "@/lib/organization";
 import { TabsNav, type TabItem } from "@/components/ui/tabs-nav";
 import {
   KanbanAutomationCard,
+  RgbsCard,
+  rgbsValid,
   SchedulingCard,
   type KanbanDraft,
+  type RgbsDraft,
   type SchedulingDraft,
 } from "@/components/agents/AgentAutomationCards";
 import { Button } from "@/components/ui/button";
@@ -38,7 +41,7 @@ type Form = {
   resetMessage: string;
   numberPhoneNotification: string;
   descriptionNotification: string;
-  splitMessages: boolean;
+  rgbs: RgbsDraft;
   kanban: KanbanDraft;
   scheduling: SchedulingDraft;
 };
@@ -71,7 +74,12 @@ function toForm(agent: Agent | null): Form {
     resetMessage: agent?.resetMessage ?? DEFAULT_RESET_MESSAGE,
     numberPhoneNotification: agent?.numberPhoneNotification ?? "",
     descriptionNotification: agent?.descriptionNotification ?? DEFAULT_NOTIFICATION_DESCRIPTION,
-    splitMessages: agent?.splitMessages ?? false,
+    rgbs: {
+      enabled: agent?.rgbs.enabled ?? false,
+      timeSmall: String(agent?.rgbs.timeSmall ?? 5),
+      timeMedium: String(agent?.rgbs.timeMedium ?? 10),
+      timeLarge: String(agent?.rgbs.timeLarge ?? 15),
+    },
     kanban: {
       leadOnFirstMessage: agent?.leadOnFirstMessage ?? false,
       leadStageId: agent?.leadStageId ?? "",
@@ -215,7 +223,12 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
         resetMessage: form.resetMessage,
         numberPhoneNotification: form.numberPhoneNotification.trim() || null,
         descriptionNotification: form.descriptionNotification,
-        splitMessages: form.splitMessages,
+        rgbs: {
+          enabled: form.rgbs.enabled,
+          timeSmall: Number(form.rgbs.timeSmall),
+          timeMedium: Number(form.rgbs.timeMedium),
+          timeLarge: Number(form.rgbs.timeLarge),
+        },
         leadOnFirstMessage: form.kanban.leadOnFirstMessage,
         leadStageId: form.kanban.leadStageId || null,
         completedStageId: form.kanban.completedStageId || null,
@@ -460,26 +473,7 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Mensagens quebradas</CardTitle>
-                  <CardDescription>
-                    O agente divide a resposta em mensagens curtas, como uma pessoa digitando no WhatsApp, e cada parte
-                    é enviada separadamente, na ordem.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <label className="flex items-center gap-2 text-sm font-medium">
-                    <Switch
-                      checked={form.splitMessages}
-                      onCheckedChange={(splitMessages) => setForm({ ...form, splitMessages })}
-                      disabled={disabled}
-                      aria-label="Mensagens quebradas"
-                    />
-                    {form.splitMessages ? "Quebrar as respostas em várias mensagens" : "Responder em uma única mensagem"}
-                  </label>
-                </CardContent>
-              </Card>
+              <RgbsCard value={form.rgbs} onChange={(rgbs) => setForm({ ...form, rgbs })} disabled={disabled} />
 
               <Card>
                 <CardHeader>
@@ -556,7 +550,7 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
                     )}
                     <div className="flex items-center gap-3">
                       {savedAt && !saving && <span className="text-xs text-muted-foreground">Salvo</span>}
-                      <Button type="submit" disabled={saving}>
+                      <Button type="submit" disabled={saving || !rgbsValid(form.rgbs)}>
                         <Save className="h-4 w-4" />
                         {saving ? "Salvando..." : agent ? "Salvar alterações" : "Criar agente"}
                       </Button>

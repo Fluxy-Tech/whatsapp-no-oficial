@@ -9,7 +9,7 @@ STATE_EXTRAS = "extras_coletados"
 # por último). A tool validar_imagem valida uma delas contra as regras do JEV.
 STATE_IMAGENS_RECEBIDAS = "imagens_recebidas"
 
-# Marcador de quebra: com splitMessages ligado, o agente separa a resposta com
+# Marcador de quebra: com o RGBS ligado (agent.rgbs), o agente separa a resposta com
 # ele e cada parte vai como uma mensagem do WhatsApp.
 QUEBRA_MENSAGEM = "[QB]"
 

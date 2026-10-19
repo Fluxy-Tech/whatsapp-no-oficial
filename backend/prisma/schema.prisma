@@ -115,10 +115,6 @@ model Organization {
   // new message restarts the wait and joins the previous ones (one answer).
   messageWaitSeconds Int @default(20)
 
-  // Seconds the agent waits between the messages of one answer (when it
-  // splits the answer into several WhatsApp messages). 0 = no wait.
-  agentMessageDelaySeconds Int @default(0)
-
   // Campaign automatic block: a contact who answers a campaign with exactly
   // one of these phrases stops receiving campaigns (TargetBlockCampaign).
   // Only evaluated while useWordsToBlockCampaign is true.
@@ -337,8 +333,14 @@ model Agent {
   // (digits only, e.g. 5511999999999). null = no notification.
   numberPhoneNotification String?
   descriptionNotification String       @default("Envie um relatório curto da conversa com o contato e liste todos os metadados coletados.")
-  // The agent splits its answer with [QB] and each part is sent as its own message.
-  splitMessages           Boolean      @default(false)
+  // RGBS (Receives, Generates, Breaks and Sends): the agent splits its answer
+  // with [QB] and each part is sent as its own message, after a wait (seconds)
+  // that depends on the part's size: up to 40 chars = timeSmall, up to 100 =
+  // timeMedium, longer = timeLarge. The times are kept when RGBS is turned off.
+  rgbsEnabled             Boolean      @default(false)
+  timeSmall               Int          @default(5)
+  timeMedium              Int          @default(10)
+  timeLarge               Int          @default(15)
 
   // Kanban automation. A stage implies its pipeline (esteira).
   // leadOnFirstMessage: creates the lead card in leadStage on the contact's first message.

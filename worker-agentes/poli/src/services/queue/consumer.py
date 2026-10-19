@@ -6,11 +6,11 @@ manda mensagem e a organização tem um agente ativo com context):
 
 {
   "jobId", "organizationId",
-  "organization": {"agentMessageDelaySeconds": int, "agentFailureMessage": str | null,
+  "organization": {"agentFailureMessage": str | null,
                    "alertPhoneNumber": str | null},
   "agent": {"id", "name", "context", "tokenOpenAi", "tokenAdk",
             "metadados": [{"name", "descricao"}], "documents": [url], "resetKeywords": [str], "resetMessage": str,
-            "numberPhoneNotification": str | null, "descriptionNotification": str, "splitMessages": bool,
+            "numberPhoneNotification": str | null, "descriptionNotification": str, "rgbs": {"enabled": bool, "timeSmall": int, "timeMedium": int, "timeLarge": int},
             "schedulingEnabled": bool, "meetingDurationMinutes": int},
   "contact": {"id", "chatId", "number", "name", "extras": {nome: valor}},
   "messages": [{"messageId", "type", "text", "timestamp",
@@ -23,8 +23,9 @@ sessão para a ferramenta estimar_preco. A mídia também fica no state
 (imagens_recebidas) para a tool validar_imagem dos metadados de imagem.
 
 A resposta vai para a fila outbound do worker-whatsapp, que envia no WhatsApp
-e notifica o backend. Com organization.agentMessageDelaySeconds, as partes de
-uma resposta dividida saem com esse intervalo entre elas. Os metadados coletados são gravados nos extras do
+e notifica o backend. Com o RGBS do agente (agent.rgbs), as partes de uma
+resposta quebrada saem uma a uma, cada uma após uma espera pelo tamanho
+(src/services/rgbs.py). Os metadados coletados são gravados nos extras do
 contato (rota interna do backend). Quando o turno completa todos os
 metadados e o agente tem numberPhoneNotification, uma mensagem gerada a partir
 de descriptionNotification também é enviada para esse número.
@@ -34,7 +35,6 @@ a organization.agentFailureMessage e o organization.alertPhoneNumber é avisado
 com o nome e o número do contato; a mensagem original continua indo para a DLQ.
 """
 
-import time
 import traceback
 import unicodedata
 
@@ -42,13 +42,14 @@ from src import config
 from src.infra.rabbitmq.connection import Reply, resumo_erro
 from src.infra.pgvector.connection import delete_chunks
 from src.infra.backend.client import clear_contact_extras, merge_contact_extras
-from src.services.adk.infos import QUEBRA_MENSAGEM, STATE_IMAGENS, STATE_IMAGENS_RECEBIDAS
+from src.services.adk.infos import STATE_IMAGENS, STATE_IMAGENS_RECEBIDAS
 from src.services.adk.notificacao import coleta_concluida, gerar_notificacao, numero_notificacao
 from src.services.adk.runner import gerar_resposta, resetar_conversa
 from src.services.jev.imagem import analisar_imagens, descrever
 from src.services.jev.imagens import metadados_de_imagem
 from src.services.jev.validacao import chave_jev
 from src.services.rag_ingestion.ingest import ingest_document
+from src.services.rgbs import enviar_partes, partes_da_resposta, rgbs_ativo
 from src.services.tokens import UsoTokens
 
 
@@ -78,14 +79,6 @@ def _pediu_reset(messages: list[dict], agent: dict) -> bool:
     return bool(palavras) and any(_normalizar(m.get("text", "")) in palavras for m in messages)
 
 
-def partes_da_resposta(texto: str, quebrar: bool) -> list[str]:
-    """Com splitMessages, cada trecho entre [QB] vira uma mensagem (vazios
-    descartados). Sem ele, um [QB] que o modelo escreva vira quebra de linha."""
-    if not quebrar:
-        return [texto.replace(QUEBRA_MENSAGEM, "\n").strip()] if texto.strip() else []
-    return [parte.strip() for parte in texto.split(QUEBRA_MENSAGEM) if parte.strip()]
-
-
 def _outbound(organization_id: str, contact: dict, job: dict, texto: str, parte: int = 0) -> tuple[str, dict]:
     return (
         config.QUEUE_WHATSAPP_OUTBOUND,
@@ -99,32 +92,6 @@ def _outbound(organization_id: str, contact: dict, job: dict, texto: str, parte:
             "externalId": f"ai-{job.get('jobId')}" if parte == 0 else f"ai-{job.get('jobId')}-{parte}",
         },
     )
-
-
-# Mesmo limite do backend (AGENT_MESSAGE_DELAY_LIMITS).
-INTERVALO_MAXIMO_SEGUNDOS = 60
-
-
-def _intervalo_entre_mensagens(job: dict) -> float:
-    valor = (job.get("organization") or {}).get("agentMessageDelaySeconds")
-    try:
-        return min(max(float(valor or 0), 0.0), INTERVALO_MAXIMO_SEGUNDOS)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _publicar_com_intervalo(job: dict, publishes: list[tuple[str, dict]], publish_now) -> list[tuple[str, dict]]:
-    """Com intervalo configurado, publica já cada parte (menos a última) e
-    espera o intervalo antes da próxima; devolve o que falta publicar no Reply.
-    O intervalo fica aqui, por conversa, e não no worker-whatsapp: lá a fila
-    de envio é única e uma espera seguraria as mensagens de todas as empresas."""
-    intervalo = _intervalo_entre_mensagens(job)
-    if not intervalo or len(publishes) < 2:
-        return publishes
-    for destino, payload in publishes[:-1]:
-        publish_now(destino, payload)
-        time.sleep(intervalo)
-    return publishes[-1:]
 
 
 def _resetar(job: dict, organization_id: str, agent: dict, contact: dict) -> Reply:
@@ -266,9 +233,13 @@ def _responder(
             traceback.print_exc()
 
     # Publicadas em ordem; o worker-whatsapp envia uma por vez (prefetch 1).
-    partes = partes_da_resposta(resultado.texto, bool(agent.get("splitMessages")))
+    partes = partes_da_resposta(resultado.texto, rgbs_ativo(agent))
     publishes = [_outbound(organization_id, contact, job, texto, i) for i, texto in enumerate(partes)]
-    publishes = _publicar_com_intervalo(job, publishes, publish_now)
+    if rgbs_ativo(agent):
+        # RGBS: as partes saem em segundo plano, cada uma após a sua espera.
+        chave = f"{organization_id}:{contact['chatId']}"
+        enviar_partes(chave, publishes, agent.get("rgbs") or {}, publish_now, lambda msg: _log(job, msg))
+        publishes = []
 
     notificacao = _notificacao(job, organization_id, agent, contact, resultado, uso)
     if notificacao:

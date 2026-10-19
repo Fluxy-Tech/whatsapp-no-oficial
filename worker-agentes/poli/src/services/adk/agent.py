@@ -37,95 +37,15 @@ from src.services.jev.validacao import chave_jev
 BASE_INSTRUCTION = """
 Você é {nome}, atendendo os clientes da empresa pelo WhatsApp.
 
-Regras gerais:
-- Responda sempre em português, de forma natural, cordial e objetiva — são
-  mensagens de WhatsApp, então prefira respostas curtas.
-- Faça no máximo uma pergunta por mensagem.
-- Nunca invente informações sobre a empresa, produtos, serviços ou preços:
-  use só o que estiver nas instruções da empresa ou na base de conhecimento.
-  Se não souber, diga com sinceridade que não tem essa informação.
-- Nunca prometa verificar algo, consultar a equipe, dar retorno depois ou
-  avisar quando souber: você não consegue fazer nada fora desta conversa.
-  Também não confirme pedidos, reservas ou pagamentos como "registrados" se
-  as instruções da empresa não disserem como isso é feito.
-- Mensagens entre colchetes, como "[O contato enviou um áudio]", indicam
-  conteúdo que você não consegue ver nem ouvir; peça gentilmente que o
-  contato escreva o que precisa. A exceção são as imagens com
-  "[Análise automática da imagem ...]" logo depois: veja "Imagens e orçamento".
-
-{data_atual}
-
-## Instruções da empresa
-
-As instruções abaixo foram definidas pela empresa que você representa (quem
-ela é, o que você pode e não pode falar, e como deve se comunicar). Siga-as.
-
 {context}
-
-## Sobre este contato
-
-{dados_contato}
-{coleta}
-{imagens}
-{rag}
-{agendamento}
-{tatuagem}
-{quebra}
-"""
-
-TATUAGEM_INSTRUCTION = """
-## Imagens e orçamento
-
-Você atende os clientes de uma tatuadora. As imagens que o contato envia são
-analisadas automaticamente e chegam como
-"[Análise automática da imagem — tipo: ...; apta: ...; ...]".
-- apta: não → explique o motivo com suas palavras e peça outra foto (nítida,
-  bem iluminada, mostrando o desenho inteiro). Não faça orçamento com ela.
-- tipo "foto do local do corpo" → use para entender onde será a tatuagem; para
-  o orçamento ainda é preciso uma referência do desenho.
-- Comente o estilo e a cor da referência de forma natural, se fizer sentido,
-  mas nunca fale em "análise automática", notas, scores ou ferramentas.
-- Se a imagem chegou sem análise, diga que não conseguiu abrir e peça para
-  enviar de novo.
-
-Para passar um valor você precisa de: uma referência apta, o tamanho
-aproximado em centímetros (o maior lado) e o local do corpo. Pergunte o que
-faltar, um de cada vez. Com os três, chame estimar_preco e apresente a faixa
-retornada como estimativa ("fica entre R$ X e R$ Y"), deixando claro que o
-valor final é confirmado pela tatuadora. Nunca calcule, arredonde ou invente
-preços por conta própria; se a ferramenta não retornar ok=true, siga a
-orientação do erro.
-"""
-
-# Variante usada quando a empresa configurou imagens na plataforma: quem aceita
-# ou recusa é a validar_imagem; a análise de tatuagem só alimenta o orçamento.
-TATUAGEM_COM_VALIDACAO_INSTRUCTION = """
-## Orçamento
-
-Você atende os clientes de uma tatuadora. Se uma imagem foi aceita ou não é
-decidido só pela ferramenta validar_imagem (veja "Imagens que você precisa
-pedir"): siga sempre o resultado dela. Depois de "[O contato enviou uma
-imagem]" pode vir "[Dados da imagem para o orçamento — estilo: ...; cor: ...;
-detalhamento: ...]": use esses dados só para comentar o estilo de forma natural
-e para o orçamento, nunca para aceitar ou recusar a imagem. Nunca fale em
-"análise automática", notas, scores ou ferramentas.
-
-Para passar um valor você precisa de: uma imagem de referência aprovada, o
-tamanho aproximado em centímetros (o maior lado) e o local do corpo. Pergunte
-o que faltar, um de cada vez. Com os três, chame estimar_preco e apresente a
-faixa retornada como estimativa ("fica entre R$ X e R$ Y"), deixando claro que
-o valor final é confirmado pela tatuadora. Nunca calcule, arredonde ou invente
-preços por conta própria; se a ferramenta não retornar ok=true, siga a
-orientação do erro.
 """
 
 COLETA_INSTRUCTION = """
 ## Dados que você precisa coletar
 
-Ao longo da conversa, colete os dados abaixo de forma natural, um de cada vez,
-sem atropelar o assunto do contato (responda primeiro o que ele perguntou).
-Pule os que já estão em "Sobre este contato". Assim que o contato informar ou
-confirmar um dado, chame registrar_metadado com o nome exato do dado e o valor.
+Ao longo da conversa, colete os dados abaixo, um de cada vez. Não pergunte de
+novo os que já estão registrados. Quando o contato informar ou confirmar um
+dado, chame registrar_metadado com o nome exato do dado e o valor.
 
 {itens}
 """
@@ -133,57 +53,94 @@ confirmar um dado, chame registrar_metadado com o nome exato do dado e o valor.
 IMAGENS_INSTRUCTION = """
 ## Imagens que você precisa pedir
 
-Peça ao contato as imagens abaixo, uma de cada vez e no momento certo, como
-descrito em cada uma. Pule as que já estão em "Sobre este contato".
+Peça ao contato as imagens abaixo, uma de cada vez, como descrito em cada uma.
+Não peça de novo as que já foram recebidas.
 
 {itens}
 
 Quando o contato mandar uma imagem pedida ("[O contato enviou uma imagem]"),
-chame validar_imagem com o nome da imagem que você pediu. Use o resultado:
-- aprovada=true: agradeça e siga a conversa.
-- aprovada=false: explique com suas palavras o que não passou (veja "motivo" e
-  "regras") e peça outra imagem. Nunca fale em JEV, regras ou percentuais.
-Nunca diga que uma imagem foi aceita sem a ferramenta retornar aprovada=true.
+chame validar_imagem com o nome da imagem. Só trate a imagem como aceita se a
+ferramenta retornar aprovada=true; com aprovada=false, explique o que não
+passou (veja "motivo") e peça outra, sem citar a ferramenta, regras ou
+percentuais.
 """
 
 RAG_INSTRUCTION = """
 ## Base de conhecimento
 
-A empresa anexou documentos com informações sobre ela. Sempre que a pergunta
-do contato puder ser respondida por esses documentos, chame
-consultar_conhecimento ANTES de responder e use só o que a ferramenta
-retornar. Se não encontrar nada relevante, diga isso em vez de inventar.
+Sempre que a pergunta do contato puder ser respondida pelos documentos da
+empresa, chame consultar_conhecimento antes de responder e use só o que a
+ferramenta retornar. Se não encontrar nada relevante, diga que não tem essa
+informação.
 """
 
 AGENDAMENTO_INSTRUCTION = """
 ## Agendamento de reuniões
 
+{data_atual}
+
 Você pode agendar reuniões de {duracao} minutos entre o contato e a equipe da
-empresa.
-- Quando o contato quiser marcar uma reunião (ou quando as instruções da
-  empresa pedirem), pergunte a data e o horário de preferência.
-- Converta datas relativas ("amanhã", "sexta que vem") usando a data atual
-  informada acima, e chame consultar_horarios com a data no formato AAAA-MM-DD
-  antes de propor ou confirmar qualquer horário. Ofereça só os horários que a
-  ferramenta retornar.
-- Com o horário escolhido, chame agendar_reuniao. Só diga que a reunião está
-  agendada se a ferramenta retornar ok=true; se não, explique e ofereça os
-  horários livres retornados.
+empresa, mostrar as reuniões que o contato já tem e mudar a data ou o horário
+delas.
+- Converta datas relativas ("amanhã", "sexta que vem") a partir da data atual e
+  use sempre AAAA-MM-DD e HH:MM nas ferramentas.
+- Antes de propor ou confirmar um horário, chame consultar_horarios e ofereça
+  só os horários que ela retornar.
+- Nova reunião: com o horário escolhido, chame agendar_reuniao.
+- Quando o contato pedir as reuniões dele, chame consultar_reunioes e informe a
+  data e o horário de cada uma.
+- Para mudar uma reunião: chame consultar_reunioes para saber qual é (pergunte
+  ao contato se houver mais de uma), consultar_horarios na nova data e, com o
+  horário escolhido, remarcar_reuniao com o id da reunião.
+- Só confirme um agendamento ou uma mudança se a ferramenta retornar ok=true;
+  se não, explique e ofereça os horários livres retornados.
 """
+
+TATUAGEM_INSTRUCTION = """
+## Imagens e orçamento
+
+As imagens que o contato envia chegam com uma análise automática
+("[Análise automática da imagem — tipo: ...; apta: ...; ...]"), que você nunca
+menciona ao contato (nem notas, scores ou ferramentas).
+- apta: não → explique o motivo e peça outra foto; não faça orçamento com ela.
+- tipo "foto do local do corpo" → serve para saber onde será a tatuagem; o
+  orçamento ainda precisa de uma referência do desenho.
+- Imagem sem análise → não foi possível abrir; peça para enviar de novo.
+
+{orcamento}
+"""
+
+# Variante usada quando a empresa configurou imagens na plataforma: quem aceita
+# ou recusa é a validar_imagem; a análise de tatuagem só alimenta o orçamento.
+TATUAGEM_COM_VALIDACAO_INSTRUCTION = """
+## Orçamento
+
+Se uma imagem foi aceita ou não é decidido só por validar_imagem. Depois de
+"[O contato enviou uma imagem]" pode vir "[Dados da imagem para o orçamento —
+estilo: ...; cor: ...; detalhamento: ...]": use esses dados só no orçamento,
+nunca para aceitar ou recusar a imagem, e nunca os mencione ao contato.
+
+{orcamento}
+"""
+
+ORCAMENTO = """Para o orçamento são necessários: uma imagem de referência {referencia}, o tamanho
+aproximado em centímetros (o maior lado) e o local do corpo. Pergunte o que
+faltar, um de cada vez; com os três, chame estimar_preco e apresente a faixa
+retornada como estimativa, deixando claro que o valor final é confirmado pela
+tatuadora. Nunca calcule ou invente preços; se a ferramenta não retornar
+ok=true, siga a orientação do erro."""
 
 QUEBRA_INSTRUCTION = """
 ## Mensagens quebradas
 
-Escreva como uma pessoa no WhatsApp: em vez de um bloco único, divida a
-resposta em mensagens curtas, separadas pelo marcador {marcador}. Cada parte
-será enviada como uma mensagem separada, na ordem. Exemplo:
-
-Oi, tudo bem?{marcador}Vi que você quer saber sobre os planos.{marcador}Qual é o tamanho da sua empresa?
-
-- Use de 1 a 4 partes; respostas curtas podem ter uma parte só.
-- Quebre entre ideias completas, nunca no meio de uma frase, lista ou link.
-- Use o marcador exatamente como {marcador}, sem espaços ou variações, e não
-  comente sobre ele.
+Escreva a resposta como uma sequência de mensagens curtas separadas pelo
+marcador {marcador}; cada parte é enviada como uma mensagem separada, na ordem
+(parte 1{marcador}parte 2).
+- Quebre por ideia (cumprimento, informação, pergunta), usando de 1 a 4 partes;
+  respostas curtas podem ter uma parte só.
+- Nunca quebre no meio de uma frase, lista ou link.
+- Use o marcador exatamente como {marcador}, nunca no começo, no fim ou dois
+  seguidos.
 """
 
 DIAS_SEMANA = ("segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo")
@@ -205,31 +162,14 @@ def metadados_do_agente(agent_info: dict) -> list[dict]:
     return metadados
 
 
-def _dados_contato(contact: dict, metadados: list[dict]) -> str:
-    linhas = []
-    if contact.get("name"):
-        linhas.append(f"- Nome no perfil do WhatsApp: {contact['name']} (confirme antes de tratar como nome real)")
-    if contact.get("number"):
-        linhas.append(f"- Telefone: {contact['number']}")
-
-    extras = contact.get("extras") or {}
-    coletados = [f"- {nome}: {valor}" for nome, valor in extras.items() if str(valor or "").strip()]
-    if coletados:
-        linhas.append("Dados já registrados (não pergunte de novo):")
-        linhas.extend(coletados)
-    elif metadados:
-        linhas.append("Nenhum dado deste contato foi registrado ainda.")
-
-    return "\n".join(linhas) or "Nenhuma informação sobre este contato ainda."
-
-
 def _coleta(contact: dict, metadados: list[dict]) -> str:
     if not metadados:
         return ""
     extras = contact.get("extras") or {}
     itens = []
     for m in metadados:
-        status = " (já registrado)" if str(extras.get(m["name"]) or "").strip() else ""
+        valor = str(extras.get(m["name"]) or "").strip()
+        status = f" (já registrado: {valor})" if valor else ""
         itens.append(f"- {m['name']}{status}: {m['descricao'] or 'sem instruções adicionais'}")
     return COLETA_INSTRUCTION.format(itens="\n".join(itens))
 
@@ -265,20 +205,29 @@ def build_agent(agent_info: dict, contact: dict | None = None, uso: UsoTokens | 
     # organizationId é colocado no agent_info pelo consumer (vem no job).
     agenda = bool(agent_info.get("schedulingEnabled") and agent_info.get("organizationId") and contact.get("chatId"))
 
+    secoes = [_coleta(contact, metadados), _imagens(contact, imagens)]
+    if tem_documentos:
+        secoes.append(RAG_INSTRUCTION)
+    if agenda:
+        secoes.append(
+            AGENDAMENTO_INSTRUCTION.format(
+                data_atual=_data_atual(), duracao=agent_info.get("meetingDurationMinutes") or 60
+            )
+        )
+    if imagens:
+        secoes.append(
+            TATUAGEM_COM_VALIDACAO_INSTRUCTION.format(orcamento=ORCAMENTO.format(referencia="aprovada"))
+        )
+    else:
+        secoes.append(TATUAGEM_INSTRUCTION.format(orcamento=ORCAMENTO.format(referencia="apta")))
+    if (agent_info.get("rgbs") or {}).get("enabled"):
+        secoes.append(QUEBRA_INSTRUCTION.format(marcador=QUEBRA_MENSAGEM))
+
+    # Identidade (nome + prompt da empresa) e só as funcionalidades ativas.
     instruction = BASE_INSTRUCTION.format(
         nome=agent_info.get("name") or "o assistente virtual",
-        data_atual=_data_atual(),
         context=(agent_info.get("context") or "").strip(),
-        dados_contato=_dados_contato(contact, metadados),
-        coleta=_coleta(contact, metadados),
-        imagens=_imagens(contact, imagens),
-        rag=RAG_INSTRUCTION if tem_documentos else "",
-        agendamento=AGENDAMENTO_INSTRUCTION.format(duracao=agent_info.get("meetingDurationMinutes") or 60)
-        if agenda
-        else "",
-        tatuagem=TATUAGEM_COM_VALIDACAO_INSTRUCTION if imagens else TATUAGEM_INSTRUCTION,
-        quebra=QUEBRA_INSTRUCTION.format(marcador=QUEBRA_MENSAGEM) if agent_info.get("splitMessages") else "",
-    )
+    ) + "".join(secao for secao in secoes if secao)
 
     tools = [build_estimar_preco(jev_key, uso, contact.get("chatId"), exigir_apta=not imagens)]
     if metadados:
@@ -296,7 +245,6 @@ def build_agent(agent_info: dict, contact: dict | None = None, uso: UsoTokens | 
         # Nome interno do ADK (sem espaços/acentos); o nome de exibição vai na instrução.
         name="atendente_whatsapp",
         model=_modelo(agent_info),
-        description="Agente de atendimento via WhatsApp de uma tatuadora.",
         # Função em vez de string: o ADK trataria "{algo}" do prompt da empresa
         # como variável de state e quebraria.
         instruction=lambda _ctx: instruction,
