@@ -175,8 +175,8 @@ function attachListeners(organizationId: string, client: Whatsapp) {
     if (state === "CONNECTED") {
       await setStatus(organizationId, "CONNECTED");
     } else if (state === "CONFLICT") {
-      // WhatsApp Web aberto em outro lugar: retomamos a sessão para este worker.
-      takeOver(organizationId, client);
+      // WhatsApp Web aberto em outro lugar: retomamos a sessão (com limite).
+      await takeOver(organizationId, client);
     } else if (["UNPAIRED", "UNPAIRED_IDLE"].includes(state)) {
       await setStatus(organizationId, "DISCONNECTED");
     }
@@ -254,9 +254,52 @@ function cancelRestart(organizationId: string) {
   restartAttempts.delete(organizationId);
 }
 
-function takeOver(organizationId: string, client: Whatsapp) {
-  logger.warn(`[${organizationId}] WhatsApp Web aberto em outro lugar (CONFLICT); retomando a sessão`);
-  client.useHere().catch((error) => logger.warn(`[${organizationId}] useHere falhou`, error));
+// useHere recarrega o WhatsApp Web (pesado). Se o outro lado também retoma a
+// sessão (outro worker com o mesmo número, outra automação...), os dois se
+// derrubariam sem fim e a CPU iria a 100%: no máximo MAX_TAKEOVERS retomadas
+// por janela; passou disso, a sessão para até alguém conectar de novo.
+const MAX_TAKEOVERS = 3;
+const TAKEOVER_WINDOW_MS = 30 * 60_000;
+const takeovers = new Map<string, number[]>();
+const takingOver = new Set<string>();
+
+/** Retoma a sessão (CONFLICT). false = limite atingido e a sessão foi parada. */
+async function takeOver(organizationId: string, client: Whatsapp): Promise<boolean> {
+  // Um useHere por vez: o CONFLICT chega pelo evento e pelo vigia.
+  if (takingOver.has(organizationId)) return true;
+
+  const now = Date.now();
+  const recent = (takeovers.get(organizationId) ?? []).filter((at) => now - at < TAKEOVER_WINDOW_MS);
+  if (recent.length >= MAX_TAKEOVERS) {
+    // Zera para a próxima conexão feita pelo usuário começar do zero.
+    takeovers.delete(organizationId);
+    logger.error(
+      `[${organizationId}] WhatsApp aberto em outro lugar ${MAX_TAKEOVERS} vezes em ${TAKEOVER_WINDOW_MS / 60_000} min; parando a sessão`,
+    );
+    cancelRestart(organizationId);
+    if (await dropClient(organizationId, client)) {
+      await setStatus(organizationId, "ERROR", {
+        lastError:
+          "O WhatsApp deste número foi aberto em outro lugar várias vezes seguidas (WhatsApp Web, outro sistema ou outro servidor). Feche a outra conexão e conecte de novo.",
+      });
+    }
+    return false;
+  }
+
+  recent.push(now);
+  takeovers.set(organizationId, recent);
+  takingOver.add(organizationId);
+  logger.warn(
+    `[${organizationId}] WhatsApp Web aberto em outro lugar (CONFLICT); retomando a sessão (${recent.length}/${MAX_TAKEOVERS})`,
+  );
+  try {
+    await withTimeout(client.useHere(), HEALTH_CHECK_TIMEOUT_MS);
+  } catch (error) {
+    logger.warn(`[${organizationId}] useHere falhou`, error);
+  } finally {
+    takingOver.delete(organizationId);
+  }
+  return true;
 }
 
 /** Tira o cliente do ar sem desvincular o aparelho (os tokens continuam na pasta). */
@@ -310,7 +353,7 @@ async function checkHealth(organizationId: string, client: Whatsapp) {
       return;
     }
 
-    if (state === "CONFLICT") takeOver(organizationId, client);
+    if (state === "CONFLICT" && !(await takeOver(organizationId, client))) return;
 
     entry.unhealthy += 1;
     logger.warn(`[${organizationId}] sessão não conectada: ${state} (${entry.unhealthy}/${MAX_UNHEALTHY_CHECKS})`);
@@ -438,6 +481,7 @@ export async function stopSession(organizationId: string, { logout = false } = {
   // Parada pedida pelo usuário: o vigia não pode religar.
   unwatch(organizationId);
   cancelRestart(organizationId);
+  takeovers.delete(organizationId);
 
   if (client) {
     if (logout) await client.logout().catch((error) => logger.warn(`[${organizationId}] logout falhou`, error));
