@@ -169,13 +169,193 @@ function attachListeners(organizationId: string, client: Whatsapp) {
   });
 
   client.onStateChange(async (state) => {
+    // Evento atrasado de um cliente que já foi substituído/encerrado.
+    if (getClient(organizationId) !== client) return;
     logger.info(`[${organizationId}] estado: ${state}`);
     if (state === "CONNECTED") {
       await setStatus(organizationId, "CONNECTED");
-    } else if (["UNPAIRED", "UNPAIRED_IDLE", "CONFLICT", "TIMEOUT"].includes(state)) {
+    } else if (state === "CONFLICT") {
+      // WhatsApp Web aberto em outro lugar: retomamos a sessão para este worker.
+      takeOver(organizationId, client);
+    } else if (["UNPAIRED", "UNPAIRED_IDLE"].includes(state)) {
       await setStatus(organizationId, "DISCONNECTED");
     }
+    // TIMEOUT e afins costumam ser passageiros: não marcamos DISCONNECTED (isso
+    // tiraria a sessão da restauração no boot); o vigia reconecta se persistir.
   });
+
+  // Chromium caiu (falta de memória, crash...): sem isso o cliente continuaria
+  // no mapa e a tela mostraria "conectado" sem estar.
+  client.page.browser().on("disconnected", () => {
+    void restartSession(organizationId, client, "navegador fechou");
+  });
+  client.page.on("error", (error) => {
+    void restartSession(organizationId, client, `página travou: ${error.message}`);
+  });
+
+  watch(organizationId, client);
+}
+
+// ---------------------------------------------------------------------------
+// Vigia da conexão: checa a sessão periodicamente e reconecta sozinho quando
+// o navegador cai ou a conexão trava. Aparelho desvinculado (UNPAIRED) ou
+// número bloqueado não têm como reconectar: aí só avisamos.
+// ---------------------------------------------------------------------------
+
+const HEALTH_CHECK_MS = 60_000;
+const HEALTH_CHECK_TIMEOUT_MS = 20_000;
+// Checagens seguidas sem CONNECTED antes de reiniciar (estados como TIMEOUT
+// e OPENING costumam se resolver sozinhos em poucos segundos).
+const MAX_UNHEALTHY_CHECKS = 3;
+const RESTART_BACKOFF_MS = [10_000, 30_000, 60_000, 120_000, 300_000];
+// Depois disso desiste e deixa a sessão em ERROR até alguém conectar de novo.
+const MAX_RESTARTS = 10;
+
+const UNPAIRED_STATES = new Set(["UNPAIRED", "UNPAIRED_IDLE"]);
+const BLOCKED_STATES = new Set(["TOS_BLOCK", "SMB_TOS_BLOCK"]);
+
+type Watch = { timer: NodeJS.Timeout; unhealthy: number; checking: boolean };
+const watches = new Map<string, Watch>();
+const restartAttempts = new Map<string, number>();
+const restartTimers = new Map<string, NodeJS.Timeout>();
+let shuttingDown = false;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`sem resposta em ${ms / 1000}s`)), ms);
+    promise.then(
+      (value) => (clearTimeout(timer), resolve(value)),
+      (error) => (clearTimeout(timer), reject(error)),
+    );
+  });
+}
+
+function watch(organizationId: string, client: Whatsapp) {
+  unwatch(organizationId);
+  const entry: Watch = {
+    timer: setInterval(() => void checkHealth(organizationId, client), HEALTH_CHECK_MS),
+    unhealthy: 0,
+    checking: false,
+  };
+  entry.timer.unref();
+  watches.set(organizationId, entry);
+}
+
+function unwatch(organizationId: string) {
+  const entry = watches.get(organizationId);
+  if (entry) clearInterval(entry.timer);
+  watches.delete(organizationId);
+}
+
+function cancelRestart(organizationId: string) {
+  const timer = restartTimers.get(organizationId);
+  if (timer) clearTimeout(timer);
+  restartTimers.delete(organizationId);
+  restartAttempts.delete(organizationId);
+}
+
+function takeOver(organizationId: string, client: Whatsapp) {
+  logger.warn(`[${organizationId}] WhatsApp Web aberto em outro lugar (CONFLICT); retomando a sessão`);
+  client.useHere().catch((error) => logger.warn(`[${organizationId}] useHere falhou`, error));
+}
+
+/** Tira o cliente do ar sem desvincular o aparelho (os tokens continuam na pasta). */
+async function dropClient(organizationId: string, client: Whatsapp) {
+  if (getClient(organizationId) !== client) return false;
+  clients.delete(organizationId);
+  unwatch(organizationId);
+  await client.close().catch(() => undefined);
+  return true;
+}
+
+async function checkHealth(organizationId: string, client: Whatsapp) {
+  const entry = watches.get(organizationId);
+  if (!entry || entry.checking || getClient(organizationId) !== client) return;
+  entry.checking = true;
+
+  try {
+    let state: string;
+    try {
+      if (client.page.isClosed()) throw new Error("página fechada");
+      state = String(await withTimeout(client.getConnectionState(), HEALTH_CHECK_TIMEOUT_MS));
+    } catch (error) {
+      state = `sem resposta (${error instanceof Error ? error.message : String(error)})`;
+    }
+    if (getClient(organizationId) !== client) return;
+
+    if (state === "CONNECTED") {
+      if (entry.unhealthy > 0) logger.info(`[${organizationId}] conexão normalizada`);
+      entry.unhealthy = 0;
+      // Conectado de forma estável: zera o contador de reinícios.
+      restartAttempts.delete(organizationId);
+      if (getSessionState(organizationId).status !== "CONNECTED") await setStatus(organizationId, "CONNECTED");
+      return;
+    }
+
+    if (UNPAIRED_STATES.has(state)) {
+      logger.warn(`[${organizationId}] aparelho desvinculado do WhatsApp; é preciso ler o QR de novo`);
+      if (await dropClient(organizationId, client)) {
+        await setStatus(organizationId, "DISCONNECTED", {
+          lastError: "Aparelho desvinculado do WhatsApp. Conecte de novo lendo o QR code.",
+        });
+      }
+      return;
+    }
+
+    if (BLOCKED_STATES.has(state)) {
+      logger.error(`[${organizationId}] número bloqueado pelo WhatsApp (${state})`);
+      if (await dropClient(organizationId, client)) {
+        await setStatus(organizationId, "ERROR", { lastError: `Número bloqueado pelo WhatsApp (${state}).` });
+      }
+      return;
+    }
+
+    if (state === "CONFLICT") takeOver(organizationId, client);
+
+    entry.unhealthy += 1;
+    logger.warn(`[${organizationId}] sessão não conectada: ${state} (${entry.unhealthy}/${MAX_UNHEALTHY_CHECKS})`);
+    if (entry.unhealthy >= MAX_UNHEALTHY_CHECKS) await restartSession(organizationId, client, state);
+  } finally {
+    entry.checking = false;
+  }
+}
+
+/** Fecha o cliente atual e agenda um novo start, com espera crescente entre as tentativas. */
+async function restartSession(organizationId: string, client: Whatsapp, reason: string) {
+  if (shuttingDown) return;
+  if (!(await dropClient(organizationId, client))) return;
+  logger.warn(`[${organizationId}] conexão perdida: ${reason}`);
+  scheduleRestart(organizationId, reason);
+}
+
+function scheduleRestart(organizationId: string, reason: string) {
+  if (shuttingDown || restartTimers.has(organizationId)) return;
+
+  const attempt = (restartAttempts.get(organizationId) ?? 0) + 1;
+  if (attempt > MAX_RESTARTS) {
+    restartAttempts.delete(organizationId);
+    logger.error(`[${organizationId}] desistindo de reconectar após ${MAX_RESTARTS} tentativas`);
+    void setStatus(organizationId, "ERROR", {
+      lastError: `Não foi possível reconectar após ${MAX_RESTARTS} tentativas (${reason}). Conecte de novo.`,
+    }).catch(() => undefined);
+    return;
+  }
+  restartAttempts.set(organizationId, attempt);
+
+  const delay = RESTART_BACKOFF_MS[Math.min(attempt - 1, RESTART_BACKOFF_MS.length - 1)];
+  logger.info(`[${organizationId}] reconectando em ${delay / 1000}s (tentativa ${attempt}/${MAX_RESTARTS})`);
+  void setStatus(organizationId, "STARTING", {
+    lastError: `Conexão perdida (${reason}). Reconectando automaticamente (tentativa ${attempt}/${MAX_RESTARTS}).`,
+  }).catch(() => undefined);
+
+  const timer = setTimeout(() => {
+    restartTimers.delete(organizationId);
+    if (shuttingDown || clients.has(organizationId) || starting.has(organizationId)) return;
+    startSession(organizationId).catch((error) =>
+      scheduleRestart(organizationId, error instanceof Error ? error.message : String(error)),
+    );
+  }, delay);
+  restartTimers.set(organizationId, timer);
 }
 
 async function createClient(organizationId: string): Promise<Whatsapp> {
@@ -255,6 +435,9 @@ function tokenFolderFor(organizationId: string) {
 export async function stopSession(organizationId: string, { logout = false } = {}) {
   const client = clients.get(organizationId);
   clients.delete(organizationId);
+  // Parada pedida pelo usuário: o vigia não pode religar.
+  unwatch(organizationId);
+  cancelRestart(organizationId);
 
   if (client) {
     if (logout) await client.logout().catch((error) => logger.warn(`[${organizationId}] logout falhou`, error));
@@ -295,6 +478,11 @@ export async function restoreSessions(): Promise<void> {
 }
 
 export async function closeAllSessions() {
-  await Promise.allSettled([...clients.values()].map((client) => client.close()));
+  // Desligando o processo: fechar os navegadores não é queda de conexão.
+  shuttingDown = true;
+  for (const organizationId of [...watches.keys()]) unwatch(organizationId);
+  for (const organizationId of [...restartTimers.keys()]) cancelRestart(organizationId);
+  const all = [...clients.values()];
   clients.clear();
+  await Promise.allSettled(all.map((client) => client.close()));
 }
