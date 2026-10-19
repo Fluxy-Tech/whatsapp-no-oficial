@@ -135,6 +135,8 @@ async function computeSlots(
   db: Prisma.TransactionClient,
   agent: SchedulingAgent,
   date: string,
+  // Rescheduling: the meeting being moved doesn't block its own new time.
+  ignoreEventId?: string,
 ): Promise<{ slots: Slot[]; reason: string | null }> {
   const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
   if (!agent.schedulingWeekdays.includes(weekday)) return { slots: [], reason: "Não há atendimento neste dia da semana." };
@@ -153,6 +155,7 @@ async function computeSlots(
       status: "scheduled",
       startsAt: { lt: dayEnd },
       endsAt: { gt: dayStart },
+      ...(ignoreEventId ? { id: { not: ignoreEventId } } : {}),
     },
     select: { startsAt: true, endsAt: true, assigneeId: true },
   });
@@ -198,6 +201,32 @@ export async function getAvailability(organizationId: string, agentId: string, r
   };
 }
 
+/** Spread the meetings: the free member with fewest meetings that day. */
+async function leastBusyAssignee(
+  db: Prisma.TransactionClient,
+  organizationId: string,
+  date: string,
+  freeAssignees: string[],
+) {
+  const dayStart = zonedToUtc(date, "00:00");
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * MINUTE_MS);
+  const counts = await db.calendarEvent.groupBy({
+    by: ["assigneeId"],
+    where: { organizationId, status: "scheduled", startsAt: { gte: dayStart, lt: dayEnd } },
+    _count: { _all: true },
+  });
+  const countOf = new Map(counts.map((row) => [row.assigneeId, row._count._all]));
+  return freeAssignees.reduce((best, userId) =>
+    (countOf.get(userId) ?? 0) < (countOf.get(best) ?? 0) ? userId : best,
+  );
+}
+
+function unavailable(slots: Slot[], reason: string | null) {
+  return new CalendarError(409, reason && !slots.length ? reason : "Este horário não está disponível.", {
+    availableSlots: slots.map((candidate) => candidate.time),
+  });
+}
+
 /** Books a meeting for the lead (AI agent). Serialized per organization so two bookings can't take the same slot. */
 export async function bookMeeting(
   organizationId: string,
@@ -217,24 +246,9 @@ export async function bookMeeting(
 
     const { slots, reason } = await computeSlots(tx, agent, date);
     const slot = slots.find((candidate) => candidate.time === time);
-    if (!slot) {
-      throw new CalendarError(409, reason && !slots.length ? reason : "Este horário não está disponível.", {
-        availableSlots: slots.map((candidate) => candidate.time),
-      });
-    }
+    if (!slot) throw unavailable(slots, reason);
 
-    // Spread the meetings: the free member with fewest meetings that day.
-    const dayStart = zonedToUtc(date, "00:00");
-    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * MINUTE_MS);
-    const counts = await tx.calendarEvent.groupBy({
-      by: ["assigneeId"],
-      where: { organizationId, status: "scheduled", startsAt: { gte: dayStart, lt: dayEnd } },
-      _count: { _all: true },
-    });
-    const countOf = new Map(counts.map((row) => [row.assigneeId, row._count._all]));
-    const assigneeId = slot.freeAssignees.reduce((best, userId) =>
-      (countOf.get(userId) ?? 0) < (countOf.get(best) ?? 0) ? userId : best,
-    );
+    const assigneeId = await leastBusyAssignee(tx, organizationId, date, slot.freeAssignees);
 
     const leadName = target?.name ?? target?.pushname ?? target?.number ?? "lead";
     return tx.calendarEvent.create({
@@ -254,6 +268,92 @@ export async function bookMeeting(
 
   notify(organizationId);
   return eventView(event);
+}
+
+/** Instant -> { date: "2026-10-07", time: "14:30" } in APP_TIMEZONE. */
+function localDateTime(instant: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: APP_TIMEZONE,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(instant);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value;
+  return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}` };
+}
+
+function leadMeetingView(event: { id: string; title: string; description: string | null; startsAt: Date; endsAt: Date }) {
+  const start = localDateTime(event.startsAt);
+  return {
+    id: event.id,
+    title: event.title,
+    notes: event.description,
+    date: start.date,
+    time: start.time,
+    endTime: localDateTime(event.endsAt).time,
+  };
+}
+
+async function findLead(organizationId: string, chatId: unknown) {
+  const target = chatId
+    ? await prisma.target.findUnique({ where: { organizationId_chatId: { organizationId, chatId: String(chatId) } } })
+    : null;
+  if (!target) throw new CalendarError(404, "Contato não encontrado");
+  return target;
+}
+
+/** Upcoming meetings of the lead (AI agent), dates/times in APP_TIMEZONE. */
+export async function listLeadMeetings(organizationId: string, chatId: unknown) {
+  const target = await findLead(organizationId, chatId);
+  const events = await prisma.calendarEvent.findMany({
+    where: { organizationId, targetId: target.id, status: "scheduled", endsAt: { gt: new Date() } },
+    orderBy: { startsAt: "asc" },
+  });
+  return { timezone: APP_TIMEZONE, meetings: events.map(leadMeetingView) };
+}
+
+/** Moves one of the lead's upcoming meetings to a free slot (AI agent). */
+export async function rescheduleLeadMeeting(
+  organizationId: string,
+  eventId: string,
+  input: { agentId?: unknown; chatId?: unknown; date?: unknown; time?: unknown },
+) {
+  const agent = await loadSchedulingAgent(organizationId, String(input.agentId ?? ""));
+  const target = await findLead(organizationId, input.chatId);
+  const date = parseDate(input.date);
+  const time = String(input.time ?? "");
+  if (!TIME_PATTERN.test(time)) throw new CalendarError(400, "Horário inválido, use HH:MM");
+
+  const event = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`calendar:${organizationId}`}))`;
+
+    // Only the contact's own upcoming meetings can be moved.
+    const current = await tx.calendarEvent.findFirst({
+      where: { id: eventId, organizationId, targetId: target.id, status: "scheduled", endsAt: { gt: new Date() } },
+    });
+    if (!current) throw new CalendarError(404, "Reunião não encontrada entre as reuniões deste contato");
+
+    const { slots, reason } = await computeSlots(tx, agent, date, current.id);
+    const slot = slots.find((candidate) => candidate.time === time);
+    if (!slot) throw unavailable(slots, reason);
+
+    // Keep the same member when they're free at the new time.
+    const assigneeId =
+      current.assigneeId && slot.freeAssignees.includes(current.assigneeId)
+        ? current.assigneeId
+        : await leastBusyAssignee(tx, organizationId, date, slot.freeAssignees);
+
+    return tx.calendarEvent.update({
+      where: { id: current.id },
+      data: { startsAt: slot.startsAt, endsAt: slot.endsAt, assigneeId },
+    });
+  });
+
+  notify(organizationId);
+  return leadMeetingView(event);
 }
 
 // ---------------------------------------------------------------------------

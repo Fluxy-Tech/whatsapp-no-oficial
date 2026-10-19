@@ -60,6 +60,34 @@ async def agendar_reuniao(
     return response.is_success, response.json()
 
 
+async def listar_reunioes(organization_id: str, chat_id: str) -> dict:
+    """Próximas reuniões agendadas do contato (data/hora no fuso do backend)."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.get(
+            f"{config.BACKEND_URL}/api/internal/calendar/{quote(organization_id, safe='')}/meetings",
+            params={"chatId": chat_id},
+            headers={"x-api-key": config.BACKEND_INTERNAL_API_KEY},
+        )
+    if response.status_code >= 500:
+        response.raise_for_status()
+    return response.json()
+
+
+async def remarcar_reuniao(
+    organization_id: str, agent_id: str, chat_id: str, reuniao_id: str, data: str, hora: str
+) -> tuple[bool, dict]:
+    """Move uma reunião do contato para outro horário livre. Retorna (ok, corpo da resposta)."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.patch(
+            f"{config.BACKEND_URL}/api/internal/calendar/{quote(organization_id, safe='')}/meetings/{quote(reuniao_id, safe='')}",
+            json={"agentId": agent_id, "chatId": chat_id, "date": data, "time": hora},
+            headers={"x-api-key": config.BACKEND_INTERNAL_API_KEY},
+        )
+    if response.status_code >= 500:
+        response.raise_for_status()
+    return response.is_success, response.json()
+
+
 def enviar_uso_de_tokens(agent_id: str, itens: list[dict]) -> None:
     """Registra no backend os tokens gastos pelo agente (tabela agent_token_usage)."""
     response = httpx.post(

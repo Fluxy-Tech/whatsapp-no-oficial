@@ -75,8 +75,10 @@ def build_consultar_conhecimento(
 
 
 def build_agendamento(organization_id: str, agent_id: str, chat_id: str):
-    """consultar_horarios + agendar_reuniao: o backend aplica horário de
-    atendimento, limites por dia/horário e a disponibilidade dos atendentes."""
+    """consultar_horarios, agendar_reuniao, consultar_reunioes e
+    remarcar_reuniao: o backend aplica horário de atendimento, limites por
+    dia/horário e a disponibilidade dos atendentes, e só deixa ver/remarcar as
+    reuniões do próprio contato."""
 
     async def consultar_horarios(data: str) -> dict:
         """Lista os horários livres para reunião em uma data. `data` no formato
@@ -98,7 +100,31 @@ def build_agendamento(organization_id: str, agent_id: str, chat_id: str):
             return {"ok": False, "erro": corpo.get("error"), "horarios_livres": corpo.get("availableSlots", [])}
         return {"ok": True, "inicio": corpo.get("startsAt"), "fim": corpo.get("endsAt"), "titulo": corpo.get("title")}
 
-    return [consultar_horarios, agendar_reuniao]
+    async def consultar_reunioes() -> dict:
+        """Lista as próximas reuniões agendadas deste contato, com id, data
+        (AAAA-MM-DD), hora (HH:MM) e observações."""
+        try:
+            corpo = await backend.listar_reunioes(organization_id, chat_id)
+        except Exception as error:
+            return {"erro": f"Não foi possível consultar as reuniões agora: {error}"}
+        if "error" in corpo:
+            return {"erro": corpo["error"]}
+        return {"reunioes": corpo.get("meetings", []), "fuso": corpo.get("timezone")}
+
+    async def remarcar_reuniao(reuniao_id: str, data: str, hora: str) -> dict:
+        """Muda a data/horário de uma reunião deste contato. `reuniao_id` vem de
+        consultar_reunioes, `data` AAAA-MM-DD e `hora` HH:MM (um dos horários
+        livres de consultar_horarios). Só confirme a mudança ao contato se o
+        retorno tiver ok=true."""
+        try:
+            ok, corpo = await backend.remarcar_reuniao(organization_id, agent_id, chat_id, reuniao_id, data, hora)
+        except Exception as error:
+            return {"ok": False, "erro": f"Não foi possível remarcar agora: {error}"}
+        if not ok:
+            return {"ok": False, "erro": corpo.get("error"), "horarios_livres": corpo.get("availableSlots", [])}
+        return {"ok": True, "data": corpo.get("date"), "hora": corpo.get("time"), "fim": corpo.get("endTime")}
+
+    return [consultar_horarios, agendar_reuniao, consultar_reunioes, remarcar_reuniao]
 
 
 def build_estimar_preco(

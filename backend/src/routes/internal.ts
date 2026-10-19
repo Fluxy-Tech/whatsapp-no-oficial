@@ -1,7 +1,13 @@
 import { timingSafeEqual } from "crypto";
 import express, { Router, type NextFunction, type Request, type Response } from "express";
 import { whatsappEvents } from "../lib/events";
-import { bookMeeting, CalendarError, getAvailability } from "../services/calendar.service";
+import {
+  bookMeeting,
+  CalendarError,
+  getAvailability,
+  listLeadMeetings,
+  rescheduleLeadMeeting,
+} from "../services/calendar.service";
 import { onMetadataCollected } from "../services/kanban.service";
 import { recordTokenUsage, TokenUsageError } from "../services/token-usage.service";
 import { extrasOf, parseExtras, targetView, updateTarget } from "../services/target.service";
@@ -51,7 +57,8 @@ router.patch("/targets/:organizationId/:chatId/extras", async (req, res) => {
   res.json(view);
 });
 
-// AI-Worker scheduling tools: free slots of a date and booking.
+// AI-Worker scheduling tools: free slots of a date, booking, and the contact's
+// own meetings (list and reschedule).
 router.get("/calendar/:organizationId/availability", async (req, res) => {
   res.json(
     await getAvailability(String(req.params.organizationId), String(req.query.agentId ?? ""), req.query.date),
@@ -60,6 +67,14 @@ router.get("/calendar/:organizationId/availability", async (req, res) => {
 
 router.post("/calendar/:organizationId/book", async (req, res) => {
   res.status(201).json(await bookMeeting(String(req.params.organizationId), req.body ?? {}));
+});
+
+router.get("/calendar/:organizationId/meetings", async (req, res) => {
+  res.json(await listLeadMeetings(String(req.params.organizationId), req.query.chatId));
+});
+
+router.patch("/calendar/:organizationId/meetings/:eventId", async (req, res) => {
+  res.json(await rescheduleLeadMeeting(String(req.params.organizationId), String(req.params.eventId), req.body ?? {}));
 });
 
 // AI-Worker: tokens spent by an agent (answers, notification, RAG).
