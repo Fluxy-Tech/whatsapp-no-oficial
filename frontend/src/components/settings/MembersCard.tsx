@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { OptionsSelect } from "@/components/ui/options-select";
 import { Switch } from "@/components/ui/switch";
+import { confirmAction } from "@/components/ui/confirm-dialog";
 
 type MembersCardProps = {
   /** Edit access to settings: flags (events / leads). */
@@ -67,7 +68,13 @@ export function MembersCard({ canEdit, canManage }: MembersCardProps) {
   }
 
   async function removeMember(member: Member) {
-    if (!confirm(`Remover ${member.name} da empresa?`)) return;
+    const confirmed = await confirmAction({
+      title: `Remover ${member.name} da empresa?`,
+      description: "A pessoa perde o acesso a esta empresa.",
+      confirmLabel: "Remover",
+      destructive: true,
+    });
+    if (!confirmed) return;
     await run(async () =>
       setMembers(await api<Member[]>(`/api/organizations/current/members/${member.id}`, { method: "DELETE" })),
     );

@@ -77,7 +77,7 @@ export function ComboboxInput({ id, value, onChange, options, placeholder, disab
         <ul
           id={listId}
           role="listbox"
-          className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-background p-1 shadow-md"
+          className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border bg-background p-1 shadow-float animate-pop-in"
         >
           {items.map((option, index) => {
             const isNew = term !== "" && !exact && index === items.length - 1;

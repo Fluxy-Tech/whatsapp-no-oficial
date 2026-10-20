@@ -7,7 +7,6 @@ import {
   ClipboardList,
   FileText,
   Mail,
-  Megaphone,
   MessageCircleReply,
   Pause,
   Phone,
@@ -33,6 +32,8 @@ import { usePermission } from "@/providers/OrganizationProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatTile } from "@/components/ui/stat-tile";
 import { TabsNav, type TabItem } from "@/components/ui/tabs-nav";
 import { WhatsappPreview } from "@/components/campaigns/WhatsappPreview";
 
@@ -170,7 +171,7 @@ function DispatchControl({
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-muted/50 text-foreground">
               <Timer className="h-5 w-5" />
             </span>
             <div>
@@ -276,29 +277,34 @@ export function CampaignDetailPage() {
   const responses = campaign.targets.filter((t) => t.respondedCampaign).length;
 
   return (
-    <div className="w-full space-y-6">
-      <div className="flex items-start gap-3">
-        <Button variant="ghost" size="icon" aria-label="Voltar para campanhas" onClick={() => navigate("/dashboard/campanhas")}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Megaphone className="h-5 w-5" />
-        </span>
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold">{campaign.name}</h1>
-            <Pill tone={state.tone}>{state.label}</Pill>
-          </div>
-          <p className="text-sm text-muted-foreground">Detalhes do disparo desta campanha de WhatsApp.</p>
-        </div>
-      </div>
+    <div className="mx-auto w-full max-w-7xl space-y-6">
+      <PageHeader
+        leading={
+          <Button
+            variant="outline"
+            size="icon"
+            className="mt-1 shrink-0"
+            aria-label="Voltar para campanhas"
+            onClick={() => navigate("/dashboard/campanhas")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        }
+        eyebrow={
+          <span className="flex items-center gap-2">
+            Campanha <Pill tone={state.tone}>{state.label}</Pill>
+          </span>
+        }
+        title={campaign.name}
+        description="Detalhes do disparo desta campanha de WhatsApp."
+      />
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <Card>
         <CardHeader>
           <div className="flex items-start gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-muted/50 text-foreground">
               <ClipboardList className="h-5 w-5" />
             </span>
             <div>
@@ -318,7 +324,7 @@ export function CampaignDetailPage() {
               { label: "Variáveis", value: String(campaign.variableCount), icon: FileText },
             ].map((field) => (
               <div key={field.label} className="flex items-center gap-3 rounded-lg border p-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-primary/10 text-primary">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-muted/50 text-foreground">
                   <field.icon className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
@@ -339,29 +345,25 @@ export function CampaignDetailPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: "Contatos", value: campaign.expectedContacts, sublabel: `${NUMBER.format(campaign.totalContacts)} já disparados`, icon: Users, tone: "bg-primary/10 text-primary" },
-          { label: "Enviados", value: campaign.totalSent, sublabel: "Confirmados pelo WhatsApp", icon: Send, tone: TONE_CLASSES.good },
+          { label: "Contatos", value: campaign.expectedContacts, sublabel: `${NUMBER.format(campaign.totalContacts)} já disparados`, icon: Users, tone: "default" as const },
+          { label: "Enviados", value: campaign.totalSent, sublabel: "Confirmados pelo WhatsApp", icon: Send, tone: "good" as const },
           {
             label: "Falhas",
             value: campaign.totalFailures,
             sublabel: campaign.totalFailures > 0 ? "Precisam de atenção" : "Nenhuma falha",
             icon: XCircle,
-            tone: TONE_CLASSES.critical,
+            tone: "critical" as const,
           },
-          { label: "Respostas", value: responses, sublabel: "Contatos que responderam", icon: MessageCircleReply, tone: "bg-blue-50 text-blue-700" },
+          { label: "Respostas", value: responses, sublabel: "Contatos que responderam", icon: MessageCircleReply, tone: "default" as const },
         ].map((metric) => (
-          <Card key={metric.label}>
-            <CardContent className="flex items-start justify-between gap-4 pt-6">
-              <div>
-                <p className="text-sm text-muted-foreground">{metric.label}</p>
-                <p className="mt-1 text-3xl font-semibold">{NUMBER.format(metric.value)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{metric.sublabel}</p>
-              </div>
-              <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-full", metric.tone)}>
-                <metric.icon className="h-5 w-5" />
-              </span>
-            </CardContent>
-          </Card>
+          <StatTile
+            key={metric.label}
+            label={metric.label}
+            value={NUMBER.format(metric.value)}
+            detail={metric.sublabel}
+            icon={metric.icon}
+            tone={metric.tone}
+          />
         ))}
       </div>
 

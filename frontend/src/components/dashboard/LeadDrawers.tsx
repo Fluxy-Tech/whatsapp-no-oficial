@@ -115,7 +115,7 @@ export function AddLeadDrawer({
             <DrawerDescription>Adicionar à esteira "{pipelineName}".</DrawerDescription>
           </DrawerHeader>
 
-          <div className="flex-1 space-y-4 overflow-y-auto p-4">
+          <div className="scrollbar-thin flex-1 space-y-4 overflow-y-auto px-6 py-5">
             <div className="space-y-2">
               <Label htmlFor="new-lead-target">Lead</Label>
               <OptionsSelect
@@ -296,7 +296,7 @@ export function LeadCardDrawer({
               <DrawerDescription>{formatPhone(card.lead.number) || card.lead.chatId}</DrawerDescription>
             </DrawerHeader>
 
-            <div className="flex-1 space-y-5 overflow-y-auto p-4">
+            <div className="scrollbar-thin flex-1 space-y-5 overflow-y-auto px-6 py-5">
               <SourceField card={card} sources={sources} canEdit={canEdit} onSave={onSourceChange} />
 
               <div className="space-y-2">

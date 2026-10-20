@@ -93,7 +93,7 @@ export function CampaignSettingsTab({ canEdit }: { canEdit: boolean }) {
       <Card>
         <CardHeader>
           <div className="flex items-start gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-muted/50 text-foreground">
               <Ban className="h-5 w-5" />
             </span>
             <div>

@@ -57,9 +57,9 @@ export function LeadCardItem({
       onDragOver={(event) => canEdit && event.preventDefault()}
       onDrop={onDrop}
       className={cn(
-        "rounded-lg border bg-background p-4 shadow-xs transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        "group/card rounded-xl border border-border/80 bg-background p-3.5 shadow-soft transition-all hover:-translate-y-0.5 hover:border-foreground/15 hover:shadow-float focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/10",
         canEdit && "active:cursor-grabbing",
-        dragging && "opacity-50",
+        dragging && "rotate-1 opacity-50",
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -106,7 +106,7 @@ export function LeadCardItem({
 
       <p className="truncate text-xs text-muted-foreground">{formatPhone(card.lead.number) || card.lead.chatId}</p>
 
-      <div className="mt-4 flex items-center justify-between gap-2 border-t pt-3">
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-dashed pt-3">
         <span className="flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5" />

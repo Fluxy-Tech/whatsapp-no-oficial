@@ -9,6 +9,7 @@ import type { Target } from "@/lib/leads";
 import { Button } from "@/components/ui/button";
 import { EventDrawer, type NewEvent } from "@/components/dashboard/EventDrawer";
 import { AttentionDot } from "@/components/ui/attention-dot";
+import { confirmAction } from "@/components/ui/confirm-dialog";
 
 type ViewMode = "day" | "week" | "month";
 
@@ -176,7 +177,13 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
 
   /** false when the user gave up on the confirmation. */
   async function remove(calendarEvent: CalendarEvent) {
-    if (!confirm(`Excluir "${calendarEvent.title}"?`)) return false;
+    const confirmed = await confirmAction({
+      title: `Excluir "${calendarEvent.title}"?`,
+      description: "O evento sai do calendário.",
+      confirmLabel: "Excluir",
+      destructive: true,
+    });
+    if (!confirmed) return false;
     await api(`/api/dashboard/calendar/events/${calendarEvent.id}`, { method: "DELETE" });
     await loadEvents();
     return true;

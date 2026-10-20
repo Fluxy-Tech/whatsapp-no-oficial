@@ -43,6 +43,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { AddLeadDrawer, LeadCardDrawer, type NewLead } from "@/components/dashboard/LeadDrawers";
 import { LeadCardItem } from "@/components/dashboard/LeadCardItem";
 import { MemberAvatar } from "@/components/dashboard/MemberAvatar";
+import { confirmAction } from "@/components/ui/confirm-dialog";
 
 const PIPELINE_STORAGE_KEY = "kanban:pipeline";
 const TODAY_FORMAT = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long" });
@@ -319,9 +320,14 @@ export function KanbanBoard({ canEdit }: KanbanBoardProps) {
   }
 
   async function deletePipeline() {
-    if (!pipeline || !confirm(`Excluir a esteira "${pipeline.name}"? Os leads saem do quadro (continuam em Leads).`)) {
-      return;
-    }
+    if (!pipeline) return;
+    const confirmed = await confirmAction({
+      title: `Excluir a esteira "${pipeline.name}"?`,
+      description: "Os leads saem do quadro, mas continuam em Leads.",
+      confirmLabel: "Excluir esteira",
+      destructive: true,
+    });
+    if (!confirmed) return;
     await run(async () => {
       const list = await api<Pipeline[]>(`/api/dashboard/kanban/pipelines/${pipeline.id}`, { method: "DELETE" });
       setPipelines(list);
@@ -348,7 +354,12 @@ export function KanbanBoard({ canEdit }: KanbanBoardProps) {
   }
 
   async function deleteStage(stage: PipelineStage) {
-    if (!confirm(`Excluir a coluna "${stage.name}"?`)) return;
+    const confirmed = await confirmAction({
+      title: `Excluir a coluna "${stage.name}"?`,
+      confirmLabel: "Excluir coluna",
+      destructive: true,
+    });
+    if (!confirmed) return;
     await run(async () =>
       setPipelines(await api<Pipeline[]>(`/api/dashboard/kanban/stages/${stage.id}`, { method: "DELETE" })),
     );
@@ -427,7 +438,13 @@ export function KanbanBoard({ canEdit }: KanbanBoardProps) {
     });
 
   async function removeCard(card: LeadCard) {
-    if (!confirm(`Apagar o card de "${leadName(card.lead)}"? O lead continua em Leads.`)) return;
+    const confirmed = await confirmAction({
+      title: `Apagar o card de "${leadName(card.lead)}"?`,
+      description: "O lead continua em Leads.",
+      confirmLabel: "Apagar card",
+      destructive: true,
+    });
+    if (!confirmed) return;
     await run(async () => {
       await api(`/api/dashboard/kanban/cards/${card.id}`, { method: "DELETE" });
       setOpenCardId(null);
@@ -522,15 +539,16 @@ export function KanbanBoard({ canEdit }: KanbanBoardProps) {
             : null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-background">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border/80 bg-background shadow-soft">
       {/* Header: pipeline, date/count, search, team and "Novo Lead". */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b px-6 py-4">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b px-6 py-5">
         <div className="min-w-0">
-          <div className="flex items-center gap-1">
+          <p className="text-xs font-medium uppercase tracking-[0.1em] text-muted-foreground">CRM · Quadro</p>
+          <div className="mt-1 flex items-center gap-1">
             {pipelines.length > 0 ? (
               <Select value={pipeline?.id ?? ""} onValueChange={setPipelineId}>
                 <SelectTrigger
-                  className="h-auto w-auto gap-1 border-0 p-0 text-xl font-semibold shadow-none focus-visible:ring-0"
+                  className="h-auto w-auto gap-1.5 border-0 p-0 text-2xl font-semibold tracking-tight shadow-none hover:bg-transparent focus-visible:ring-0"
                   aria-label="Esteira"
                 >
                   <SelectValue />
@@ -544,7 +562,7 @@ export function KanbanBoard({ canEdit }: KanbanBoardProps) {
                 </SelectContent>
               </Select>
             ) : (
-              <h2 className="text-xl font-semibold">Quadro</h2>
+              <h2 className="text-2xl font-semibold">Quadro</h2>
             )}
             {canEdit && (
               <DropdownMenu>
@@ -591,7 +609,7 @@ export function KanbanBoard({ canEdit }: KanbanBoardProps) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar lead..."
-              className="h-9 w-56 bg-muted/40 pl-9"
+              className="h-9 w-60 rounded-lg bg-muted/40 pl-9"
               aria-label="Buscar lead"
             />
           </div>
@@ -672,10 +690,10 @@ export function KanbanBoard({ canEdit }: KanbanBoardProps) {
             type="button"
             onClick={() => setSourceFilter(value)}
             className={cn(
-              "h-8 rounded-md border px-3 text-sm font-medium transition-colors",
+              "h-8 rounded-full border px-3.5 text-sm font-medium transition-all",
               sourceFilter.toLowerCase() === value.toLowerCase()
-                ? "border-primary/20 bg-primary/10 text-primary"
-                : "bg-background hover:bg-accent hover:text-accent-foreground",
+                ? "border-primary bg-primary text-primary-foreground shadow-[0_4px_12px_-4px_oklch(0%_0_0/0.35)]"
+                : "bg-background text-muted-foreground hover:border-foreground/20 hover:text-foreground",
             )}
           >
             {label}
@@ -707,7 +725,7 @@ export function KanbanBoard({ canEdit }: KanbanBoardProps) {
       {error && <p className="shrink-0 border-b px-6 py-2 text-sm text-destructive">{error}</p>}
 
       {/* Columns fill the remaining height; each one scrolls its cards. */}
-      <div className="flex min-h-0 flex-1 overflow-x-auto bg-muted/30">
+      <div className="scrollbar-thin flex min-h-0 flex-1 gap-3 overflow-x-auto bg-muted/40 p-3">
         {!pipeline && (
           <p className="m-auto text-sm text-muted-foreground">
             Nenhuma esteira ainda.{canEdit ? " Crie a primeira para organizar seus leads." : ""}
@@ -727,11 +745,11 @@ export function KanbanBoard({ canEdit }: KanbanBoardProps) {
               onDragLeave={() => setDropStageId((current) => (current === stage.id ? null : current))}
               onDrop={(event) => canEdit && handleDrop(event, stage.id)}
               className={cn(
-                "flex h-full min-h-0 w-[280px] shrink-0 flex-col border-r transition-colors",
-                dropStageId === stage.id && "bg-primary/5",
+                "flex h-full min-h-0 w-[288px] shrink-0 flex-col rounded-xl border border-border/60 bg-background/60 transition-all",
+                dropStageId === stage.id && "border-foreground/30 bg-background ring-4 ring-foreground/5",
               )}
             >
-              <div className="group flex shrink-0 items-center gap-2 px-4 pb-2 pt-4">
+              <div className="group flex shrink-0 items-center gap-2 px-3.5 pb-2 pt-3.5">
                 {/* Clicking the dot changes the column color. */}
                 <label
                   className={cn("relative h-2.5 w-2.5 shrink-0 rounded-full", canEdit && "cursor-pointer")}
@@ -749,7 +767,7 @@ export function KanbanBoard({ canEdit }: KanbanBoardProps) {
                   )}
                 </label>
                 <span className="truncate text-sm font-semibold">{stage.name}</span>
-                <span className="rounded-full border bg-background px-2 text-xs font-medium text-muted-foreground">
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
                   {column.length}
                 </span>
                 {canEdit && (
@@ -802,7 +820,7 @@ export function KanbanBoard({ canEdit }: KanbanBoardProps) {
                 )}
               </div>
 
-              <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 pb-4 pt-1">
+              <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-2.5 pb-3 pt-1">
                 {column.map((card) => (
                   <LeadCardItem
                     key={card.id}
@@ -825,7 +843,7 @@ export function KanbanBoard({ canEdit }: KanbanBoardProps) {
                   />
                 ))}
                 {column.length === 0 && (
-                  <p className="py-6 text-center text-xs text-muted-foreground">
+                  <p className="rounded-lg border border-dashed py-8 text-center text-xs text-muted-foreground">
                     {filtering ? "Nenhum lead encontrado" : canEdit ? "Arraste leads para cá" : "Nenhum lead"}
                   </p>
                 )}
@@ -835,12 +853,12 @@ export function KanbanBoard({ canEdit }: KanbanBoardProps) {
         })}
 
         {canEdit && pipeline && (
-          <div className="shrink-0 p-4">
+          <div className="shrink-0">
             <Button
               type="button"
               variant="outline"
               size="icon"
-              className="h-10 w-10 border-dashed bg-transparent"
+              className="h-11 w-11 rounded-xl border-dashed bg-transparent"
               onClick={() => setNameDialog({ kind: "stage" })}
               title="Nova coluna"
               aria-label="Nova coluna"

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { confirmAction } from "@/components/ui/confirm-dialog";
 
 const STATUS_LABELS: Record<DocumentStatus["status"], string> = {
   pending: "Na fila",
@@ -118,8 +119,14 @@ export function AgentDocuments({ agent, canEdit, onAgentChange }: AgentDocuments
                       size="icon"
                       aria-label="Remover documento"
                       disabled={busy}
-                      onClick={() => {
-                        if (!confirm(`Remover "${documentName(url)}" da base de conhecimento?`)) return;
+                      onClick={async () => {
+                        const confirmed = await confirmAction({
+                          title: "Remover documento?",
+                          description: `"${documentName(url)}" sai da base de conhecimento do agente.`,
+                          confirmLabel: "Remover",
+                          destructive: true,
+                        });
+                        if (!confirmed) return;
                         run(() =>
                           api<Agent>(`/api/agents/${agent.id}/documents?url=${encodeURIComponent(url)}`, {
                             method: "DELETE",

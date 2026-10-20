@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { History, Plus, Settings } from "lucide-react";
 import { usePermission } from "@/providers/OrganizationProvider";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
 import { TabsNav, type TabItem } from "@/components/ui/tabs-nav";
 import { CampaignHistoryTab } from "@/components/campaigns/CampaignHistoryTab";
 import { CampaignNewTab } from "@/components/campaigns/CampaignNewTab";
@@ -20,13 +22,21 @@ export function CampaignsPage() {
   ];
 
   return (
-    <div className="w-full space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Campanhas</h1>
-        <p className="text-sm text-muted-foreground">
-          Disparos em massa (ou manuais) pelo WhatsApp conectado, histórico de envios e configurações.
-        </p>
-      </div>
+    <div className="mx-auto w-full max-w-7xl space-y-6">
+      <PageHeader
+        eyebrow="Automação"
+        title="Campanhas"
+        accent="em massa"
+        description="Disparos em massa (ou manuais) pelo WhatsApp conectado, histórico de envios e configurações."
+        actions={
+          canEdit && tab !== "new" ? (
+            <Button onClick={() => setTab("new")}>
+              <Plus className="h-4 w-4" />
+              Nova campanha
+            </Button>
+          ) : null
+        }
+      />
 
       <TabsNav tabs={tabs} value={tab} onChange={setTab} />
 

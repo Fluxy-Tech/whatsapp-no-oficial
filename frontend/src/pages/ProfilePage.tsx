@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import { confirmAction } from "@/components/ui/confirm-dialog";
 
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 
@@ -44,7 +45,8 @@ export function ProfilePage() {
   }
 
   async function removePhoto() {
-    if (!confirm("Remover sua foto de perfil?")) return;
+    const confirmed = await confirmAction({ title: "Remover sua foto de perfil?", confirmLabel: "Remover", destructive: true });
+    if (!confirmed) return;
     setBusy("remove");
     setError(null);
     try {

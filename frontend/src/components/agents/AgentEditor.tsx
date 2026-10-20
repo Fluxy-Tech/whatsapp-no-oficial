@@ -25,6 +25,7 @@ import { AgentDocuments } from "@/components/agents/AgentDocuments";
 import { KeywordsInput } from "@/components/agents/KeywordsInput";
 import { ImageRequestsEditor } from "@/components/agents/ImageRequestsEditor";
 import { MetadadosEditor, type MetadadoDraft, type StageOption } from "@/components/agents/MetadadosEditor";
+import { confirmAction } from "@/components/ui/confirm-dialog";
 
 type TokenDraft = { value: string; remove: boolean };
 
@@ -257,7 +258,14 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
   }
 
   async function handleDelete() {
-    if (!agent || !confirm(`Excluir o agente "${agent.name}"? Os documentos dele também serão apagados.`)) return;
+    if (!agent) return;
+    const confirmed = await confirmAction({
+      title: `Excluir o agente "${agent.name}"?`,
+      description: "Os documentos dele também serão apagados. Essa ação não pode ser desfeita.",
+      confirmLabel: "Excluir agente",
+      destructive: true,
+    });
+    if (!confirmed) return;
     setSaving(true);
     try {
       await api(`/api/agents/${agent.id}`, { method: "DELETE" });
@@ -290,7 +298,7 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
               <CardHeader>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <CardTitle>{agent ? agent.name : "Novo agente"}</CardTitle>
+                    <CardTitle>Perfil do agente</CardTitle>
                     <CardDescription>
                       {agent?.isOrganizationAgent
                         ? agent.canAnswer

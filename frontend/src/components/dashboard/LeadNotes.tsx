@@ -8,6 +8,7 @@ import { MemberAvatar } from "@/components/dashboard/MemberAvatar";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import { confirmAction } from "@/components/ui/confirm-dialog";
 
 type Person = { id: string; name: string; image?: string | null } | null;
 
@@ -88,7 +89,8 @@ export function LeadNotes({ leadId, canEdit }: { leadId: string; canEdit: boolea
   }
 
   async function removeComment(comment: LeadComment) {
-    if (!confirm("Apagar este comentário?")) return;
+    const confirmed = await confirmAction({ title: "Apagar este comentário?", confirmLabel: "Apagar", destructive: true });
+    if (!confirmed) return;
     await run(async () => {
       await api(`${base}/comments/${comment.id}`, { method: "DELETE" });
       setComments((list) => list.filter((c) => c.id !== comment.id));
@@ -127,7 +129,13 @@ export function LeadNotes({ leadId, canEdit }: { leadId: string; canEdit: boolea
   }
 
   async function removeAttachment(attachment: LeadAttachment) {
-    if (!confirm(`Apagar o arquivo "${attachment.fileName}"?`)) return;
+    const confirmed = await confirmAction({
+      title: "Apagar o arquivo?",
+      description: `"${attachment.fileName}" será removido deste lead.`,
+      confirmLabel: "Apagar",
+      destructive: true,
+    });
+    if (!confirmed) return;
     await run(async () => {
       await api(`${base}/attachments/${attachment.id}`, { method: "DELETE" });
       setAttachments((list) => list.filter((a) => a.id !== attachment.id));

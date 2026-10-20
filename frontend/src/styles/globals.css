@@ -1,27 +1,90 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: hsl(0 0% 100%);
-  --color-foreground: hsl(222.2 84% 4.9%);
-  --color-card: hsl(0 0% 100%);
-  --color-card-foreground: hsl(222.2 84% 4.9%);
-  --color-primary: oklch(20.5% 0 0); /* neutral-900: black and white theme */
-  --color-primary-foreground: hsl(0 0% 100%);
-  --color-secondary: hsl(210 40% 96.1%);
-  --color-secondary-foreground: hsl(222.2 47.4% 11.2%);
-  --color-muted: hsl(210 40% 96.1%);
-  --color-muted-foreground: hsl(215.4 16.3% 46.9%);
-  --color-accent: hsl(210 40% 96.1%);
-  --color-accent-foreground: hsl(222.2 47.4% 11.2%);
-  --color-destructive: hsl(0 84.2% 60.2%);
-  --color-destructive-foreground: hsl(210 40% 98%);
-  --color-border: hsl(214.3 31.8% 91.4%);
-  --color-input: hsl(214.3 31.8% 91.4%);
-  --color-ring: oklch(20.5% 0 0); /* neutral-900 */
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
 
-  --radius-lg: 0.5rem;
-  --radius-md: calc(0.5rem - 2px);
-  --radius-sm: calc(0.5rem - 4px);
+  /* Black and white brand on warm neutrals (zinc). */
+  --color-background: oklch(100% 0 0);
+  --color-foreground: oklch(17% 0.005 286);
+  --color-card: oklch(100% 0 0);
+  --color-card-foreground: oklch(17% 0.005 286);
+  --color-primary: oklch(17% 0.005 286);
+  --color-primary-foreground: oklch(99% 0 0);
+  --color-secondary: oklch(96.7% 0.002 286);
+  --color-secondary-foreground: oklch(21% 0.006 286);
+  --color-muted: oklch(96.7% 0.002 286);
+  --color-muted-foreground: oklch(55.2% 0.014 286);
+  --color-accent: oklch(95.5% 0.003 286);
+  --color-accent-foreground: oklch(21% 0.006 286);
+  --color-destructive: oklch(57.7% 0.215 27);
+  --color-destructive-foreground: oklch(98.5% 0 0);
+  --color-border: oklch(92% 0.004 286);
+  --color-input: oklch(90% 0.004 286);
+  --color-ring: oklch(17% 0.005 286);
+  /* WhatsApp green, only as a highlight (status, "online", chat bubbles). */
+  --color-brand: oklch(72% 0.17 155);
+
+  --radius-lg: 0.75rem;
+  --radius-md: 0.625rem;
+  --radius-sm: 0.5rem;
+
+  --shadow-soft: 0 1px 2px oklch(0% 0 0 / 0.04), 0 4px 16px -4px oklch(0% 0 0 / 0.06);
+  --shadow-float: 0 1px 2px oklch(0% 0 0 / 0.05), 0 24px 64px -16px oklch(0% 0 0 / 0.28);
+
+  --animate-overlay-in: overlay-in 180ms ease-out;
+  --animate-overlay-out: overlay-out 140ms ease-in;
+  --animate-dialog-in: dialog-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-dialog-out: dialog-out 140ms ease-in;
+  --animate-pop-in: pop-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-fade-up: fade-up 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-marquee: marquee 40s linear infinite;
+
+  @keyframes overlay-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes overlay-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+  @keyframes dialog-in {
+    from { opacity: 0; transform: translate(-50%, -48%) scale(0.96); }
+    to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  }
+  @keyframes dialog-out {
+    from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    to { opacity: 0; transform: translate(-50%, -48%) scale(0.97); }
+  }
+  @keyframes pop-in {
+    from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+  @keyframes slide-in {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+  }
+  @keyframes page-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
 }
 
 @layer base {
@@ -29,9 +92,29 @@
     border-color: var(--color-border);
   }
 
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+  }
+
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.02em;
+  }
+
+  ::selection {
+    background-color: var(--color-primary);
+    color: var(--color-primary-foreground);
   }
 
   /* Tailwind v4 resets buttons to cursor: default. */
@@ -45,5 +128,48 @@
   button:disabled,
   select:disabled {
     cursor: not-allowed;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 1ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Thin scrollbars inside the app (sidebar, lists, drawers). */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+
+  /* Landing: hairline grid that fades out towards the edges. */
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, oklch(100% 0 0 / 0.06) 1px, transparent 1px),
+      linear-gradient(to bottom, oklch(100% 0 0 / 0.06) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, black 30%, transparent 75%);
+  }
+  .bg-grid-light {
+    background-image:
+      linear-gradient(to right, oklch(0% 0 0 / 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, oklch(0% 0 0 / 0.05) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, black 20%, transparent 75%);
+  }
+  .text-silver {
+    background: linear-gradient(180deg, oklch(100% 0 0) 20%, oklch(72% 0 0) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .noise {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
   }
 }

@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { OptionsSelect } from "@/components/ui/options-select";
 import { Spinner } from "@/components/ui/spinner";
+import { StatTile } from "@/components/ui/stat-tile";
 
 const NUMBER = new Intl.NumberFormat("pt-BR");
 const DATE = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" });
@@ -34,29 +35,6 @@ const TYPE_OPTIONS = [
   { value: "MANUAL", label: "Manual" },
 ];
 const PAGE_SIZE_OPTIONS = [10, 20, 50].map((size) => ({ value: String(size), label: `${size} por página` }));
-
-function StatTile({ label, value, sublabel, icon: Icon, tone }: {
-  label: string;
-  value: string;
-  sublabel: string;
-  icon: typeof Send;
-  tone: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="flex items-start justify-between gap-4 pt-6">
-        <div>
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="mt-1 text-3xl font-semibold">{value}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{sublabel}</p>
-        </div>
-        <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-full", tone)}>
-          <Icon className="h-5 w-5" />
-        </span>
-      </CardContent>
-    </Card>
-  );
-}
 
 /** Campaigns already created: numbers on top, filters and the paged report. */
 export function CampaignHistoryTab() {
@@ -133,31 +111,31 @@ export function CampaignHistoryTab() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           icon={Megaphone}
-          tone="bg-primary/10 text-primary"
+          tone="default"
           label="Campanhas"
           value={stats ? NUMBER.format(stats.totalCampaigns) : "—"}
-          sublabel="Total criadas"
+          detail="Total criadas"
         />
         <StatTile
           icon={CheckCircle2}
-          tone={TONE_CLASSES.good}
+          tone="good"
           label="Concluídas"
           value={stats ? NUMBER.format(stats.completedCampaigns) : "—"}
-          sublabel={`${completionRate.toFixed(0)}% do total`}
+          detail={`${completionRate.toFixed(0)}% do total`}
         />
         <StatTile
           icon={Send}
-          tone="bg-blue-50 text-blue-700"
+          tone="default"
           label="Mensagens enviadas"
           value={stats ? NUMBER.format(stats.totalMessagesSent) : "—"}
-          sublabel={stats ? `${NUMBER.format(stats.totalMessagesQueued)} disparadas` : "Total disparado"}
+          detail={stats ? `${NUMBER.format(stats.totalMessagesQueued)} disparadas` : "Total disparado"}
         />
         <StatTile
           icon={AlertTriangle}
-          tone={TONE_CLASSES.warning}
+          tone="warning"
           label="Falhas"
           value={stats ? NUMBER.format(stats.totalFailures) : "—"}
-          sublabel={`${failureRate.toFixed(2).replace(".", ",")}% do total`}
+          detail={`${failureRate.toFixed(2).replace(".", ",")}% do total`}
         />
       </div>
 
@@ -232,7 +210,7 @@ export function CampaignHistoryTab() {
       <Card>
         <CardHeader>
           <div className="flex items-start gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-muted/50 text-foreground">
               <List className="h-5 w-5" />
             </span>
             <div>

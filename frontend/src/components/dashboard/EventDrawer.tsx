@@ -160,7 +160,7 @@ export function EventDrawer({
 
           <fieldset disabled={!canEdit || saving} className="contents">
 
-          <div className="flex-1 space-y-4 overflow-y-auto p-4">
+          <div className="scrollbar-thin flex-1 space-y-4 overflow-y-auto px-6 py-5">
             <div className="space-y-2">
               <Label htmlFor="event-title">Título</Label>
               <Input

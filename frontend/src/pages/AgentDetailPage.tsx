@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Star } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Agent, AgentsResponse, DocumentStatus } from "@/lib/agents";
 import { usePermission } from "@/providers/OrganizationProvider";
 import { useSocket } from "@/providers/SocketProvider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 import { Spinner } from "@/components/ui/spinner";
 import { AgentEditor } from "@/components/agents/AgentEditor";
 
@@ -79,11 +80,40 @@ export function AgentDetailPage() {
   }
 
   return (
-    <div className="w-full space-y-4">
-      <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard/agentes")}>
-        <ArrowLeft className="h-4 w-4" />
-        Voltar para agentes
-      </Button>
+    <div className="mx-auto w-full max-w-7xl space-y-6">
+      <PageHeader
+        leading={
+          <Button
+            variant="outline"
+            size="icon"
+            className="mt-1 shrink-0"
+            aria-label="Voltar para agentes"
+            onClick={() => navigate("/dashboard/agentes")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        }
+        eyebrow={
+          <span className="flex flex-wrap items-center gap-2">
+            Agente de IA
+            {agent?.isOrganizationAgent && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground">
+                <Star className="h-3 w-3 fill-current" />
+                Em uso
+              </span>
+            )}
+            {agent && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium text-foreground">
+                <span className={agent.canAnswer ? "h-1.5 w-1.5 rounded-full bg-emerald-500" : "h-1.5 w-1.5 rounded-full bg-amber-500"} />
+                {agent.canAnswer ? "Pronto para responder" : !agent.active ? "Inativo" : "Sem prompt"}
+              </span>
+            )}
+          </span>
+        }
+        title={isNew ? "Novo" : (agent?.name ?? "Agente")}
+        accent={isNew ? "agente" : undefined}
+        description={isNew ? "Defina o nome, o prompt e as chaves de API do agente." : undefined}
+      />
 
       {error && agent && <p className="text-sm text-destructive">{error}</p>}
 

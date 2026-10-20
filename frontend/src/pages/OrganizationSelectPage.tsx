@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Building2, ChevronRight, KeyRound, LogOut, Plus } from "lucide-react";
+import { ChevronRight, KeyRound, LogOut, Plus } from "lucide-react";
 import { api } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 import { roleLabel, type OrganizationSummary } from "@/lib/organization";
@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import logo from "@/assets/getleads-marca.png";
 
 /** After login: pick the business to enter, create one or join with an invite code. */
 export function OrganizationSelectPage() {
@@ -86,19 +87,22 @@ export function OrganizationSelectPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-start justify-center bg-muted/30 px-4 py-12">
-      <div className="w-full max-w-2xl space-y-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">Escolha a empresa</h1>
-            <p className="text-sm text-muted-foreground">
-              {session?.user.name ? `Olá, ${session.user.name}. ` : ""}Selecione qual empresa você quer acessar.
-            </p>
-          </div>
-          <Button variant="outline" size="sm" onClick={handleSignOut}>
-            <LogOut className="h-4 w-4" />
-            Sair
-          </Button>
+    <div className="relative min-h-dvh overflow-hidden bg-muted/40">
+      <div className="bg-grid-light pointer-events-none absolute inset-x-0 top-0 h-[28rem]" />
+      <header className="relative mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
+        <img src={logo} alt="GetLeads" className="h-8 w-auto" />
+        <Button variant="outline" size="sm" onClick={handleSignOut}>
+          <LogOut className="h-4 w-4" />
+          Sair
+        </Button>
+      </header>
+      <div className="relative mx-auto w-full max-w-2xl animate-fade-up space-y-6 px-4 pb-16 pt-6 sm:pt-12">
+        <div className="text-center">
+          <p className="text-sm text-muted-foreground">{session?.user.name ? `Olá, ${session.user.name}` : "Olá"}</p>
+          <h1 className="mt-1 text-3xl font-semibold sm:text-4xl">
+            Escolha a <span className="font-display font-normal italic">empresa</span>
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">Selecione qual empresa você quer acessar.</p>
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
@@ -117,16 +121,18 @@ export function OrganizationSelectPage() {
                 Você ainda não participa de nenhuma empresa. Crie a sua ou entre com um código de convite.
               </p>
             ) : (
-              <ul className="divide-y rounded-md border">
+              <ul className="space-y-2">
                 {organizations.map((organization) => (
                   <li key={organization.id}>
                     <button
                       type="button"
                       onClick={() => enter(organization.id)}
                       disabled={entering !== null}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent disabled:opacity-60"
+                      className="group flex w-full items-center gap-4 rounded-xl border border-border/80 bg-background px-4 py-3.5 text-left transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-soft disabled:opacity-60"
                     >
-                      <Building2 className="h-5 w-5 shrink-0 text-muted-foreground" />
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary font-display text-lg italic text-primary-foreground">
+                        {organization.name.charAt(0).toUpperCase()}
+                      </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium">{organization.name}</span>
                         <span className="block text-xs text-muted-foreground">{roleLabel(organization.role)}</span>
@@ -134,7 +140,7 @@ export function OrganizationSelectPage() {
                       {entering === organization.id ? (
                         <Spinner className="size-4" />
                       ) : (
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
                       )}
                     </button>
                   </li>

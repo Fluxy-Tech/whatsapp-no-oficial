@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { confirmAction } from "@/components/ui/confirm-dialog";
 
 type WhatsappStatus = {
   status: string;
@@ -86,9 +87,12 @@ export function WhatsappConnectionCard({ canConnect }: { canConnect: boolean }) 
   // Desvincula o número do WhatsApp e apaga a sessão salva: o próximo
   // "Conectar" gera um QR Code novo (pode ser outro número).
   async function handleLogout() {
-    const confirmed = window.confirm(
-      "Deslogar este número do WhatsApp? Para conectar de novo será preciso escanear um novo QR Code.",
-    );
+    const confirmed = await confirmAction({
+      title: "Deslogar este número do WhatsApp?",
+      description: "Para conectar de novo será preciso escanear um novo QR Code.",
+      confirmLabel: "Deslogar",
+      destructive: true,
+    });
     if (!confirmed) return;
 
     setLoading("logout");

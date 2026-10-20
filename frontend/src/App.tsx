@@ -3,6 +3,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ModuleGuard, ModuleHome } from "@/components/ModuleGuard";
 import { SocketProvider } from "@/providers/SocketProvider";
 import { DashboardLayout } from "@/layouts/DashboardLayout";
+import { LandingPage } from "@/pages/LandingPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { RegisterPage } from "@/pages/RegisterPage";
 import { OrganizationSelectPage } from "@/pages/OrganizationSelectPage";
@@ -22,6 +23,7 @@ import { CampaignDetailPage } from "@/pages/CampaignDetailPage";
 export function App() {
   return (
     <Routes>
+      <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route

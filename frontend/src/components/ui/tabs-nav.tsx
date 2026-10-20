@@ -10,10 +10,16 @@ type TabsNavProps<T extends string> = {
   className?: string;
 };
 
-/** Underlined tab bar (icon + label) used on the agent and dashboard screens. */
+/** Segmented tab bar (icon + label): the selected tab is a black pill. */
 export function TabsNav<T extends string>({ tabs, value, onChange, className }: TabsNavProps<T>) {
   return (
-    <nav className={cn("flex gap-1 overflow-x-auto rounded-lg bg-muted/60 px-3 pt-2", className)} role="tablist">
+    <nav
+      className={cn(
+        "scrollbar-thin flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-border/80 bg-background p-1 shadow-soft",
+        className,
+      )}
+      role="tablist"
+    >
       {tabs.map(({ id, label, icon: Icon }) => {
         const selected = value === id;
         return (
@@ -24,13 +30,14 @@ export function TabsNav<T extends string>({ tabs, value, onChange, className }: 
             aria-selected={selected}
             onClick={() => onChange(id)}
             className={cn(
-              "relative flex shrink-0 items-center gap-2 px-3 pb-3 pt-2 text-sm font-medium transition-colors",
-              selected ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+              "flex h-9 shrink-0 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-all",
+              selected
+                ? "bg-primary text-primary-foreground shadow-[inset_0_1px_0_oklch(100%_0_0/0.1),0_4px_12px_-4px_oklch(0%_0_0/0.35)]"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
           >
             <Icon className="h-4 w-4" />
             {label}
-            {selected && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary" />}
           </button>
         );
       })}
