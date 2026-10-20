@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
-import { MessageSquare, Plus, Save, Trash2 } from "lucide-react";
+import { Plus, Save, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { TextLinks } from "@/components/LinkifiedText";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,11 +24,10 @@ type TargetDetailProps = {
   /** Names of the metadados of the agent in use by the organization. */
   metadadoNames: string[];
   canEdit: boolean;
-  onOpenChat: (target: Target) => void;
   onUpdated: (target: Partial<Target> & { targetId: string }) => void;
 };
 
-export function TargetDetail({ target, metadadoNames, canEdit, onOpenChat, onUpdated }: TargetDetailProps) {
+export function TargetDetail({ target, metadadoNames, canEdit, onUpdated }: TargetDetailProps) {
   const [rows, setRows] = useState<ExtraRow[]>(() => toRows(target.extras, metadadoNames));
   const [savingExtras, setSavingExtras] = useState(false);
   const [togglingAgent, setTogglingAgent] = useState(false);
@@ -102,27 +100,21 @@ export function TargetDetail({ target, metadadoNames, canEdit, onOpenChat, onUpd
   return (
     <Card>
       <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle className="truncate">{targetLabel(target)}</CardTitle>
-            <CardDescription className="space-x-2">
-              <span>{target.number ? `+${target.number}` : target.targetId}</span>
-              {target.isOnline ? (
-                <Badge variant="secondary">Online</Badge>
-              ) : (
-                target.lastSeen && <span>· visto {formatRelativeTime(target.lastSeen)}</span>
-              )}
-            </CardDescription>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => onOpenChat(target)}>
-            <MessageSquare className="h-4 w-4" />
-            Abrir conversa
-          </Button>
-        </div>
+        <CardTitle>Ficha do lead</CardTitle>
+        <CardDescription className="flex flex-wrap items-center gap-2">
+          {target.isOnline ? (
+            <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              Online agora
+            </span>
+          ) : (
+            <span>{target.lastSeen ? `Visto ${formatRelativeTime(target.lastSeen)}` : "Sem registro de visto por último"}</span>
+          )}
+        </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-6">
-        <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+        <div className="flex items-center justify-between gap-4 rounded-xl border bg-muted/30 p-4">
           <div>
             <p className="text-sm font-medium">Agente de IA</p>
             <p className="text-xs text-muted-foreground">

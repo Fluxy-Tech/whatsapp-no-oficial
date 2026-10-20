@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { Search } from "lucide-react";
 import { api } from "@/lib/api";
+import { formatPhone, initials } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
 import { useSocket } from "@/providers/SocketProvider";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 
 type Contact = {
   id: string;
@@ -93,31 +94,44 @@ export function ContactsList({ selectedChatId, onSelect }: ContactsListProps) {
   }, [contacts, filter]);
 
   return (
-    <Card className="flex h-full flex-col">
-      <CardHeader>
-        <CardTitle>Contatos</CardTitle>
-        <CardDescription>
-          {loading ? "Carregando..." : `${contacts.length} contato(s) sincronizado(s) do WhatsApp.`}
-        </CardDescription>
-        <Input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filtrar por nome ou celular..."
-          className="mt-2"
-        />
-      </CardHeader>
-      <CardContent className="flex min-h-0 flex-1 flex-col">
+    <div className="flex h-full w-full min-w-0 flex-col">
+      <div className="shrink-0 space-y-3 border-b border-border/70 p-4">
+        <div className="flex items-baseline justify-between gap-2">
+          <h1 className="text-lg font-semibold">Conversas</h1>
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {loading ? "Carregando..." : `${contacts.length} contato(s)`}
+          </span>
+        </div>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Buscar nome ou celular..."
+            className="h-9 rounded-lg bg-muted/40 pl-9"
+            aria-label="Buscar contato"
+          />
+        </div>
+      </div>
+
+      <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto p-2">
+        {loading && (
+          <div className="flex justify-center py-10">
+            <Spinner className="size-5 text-muted-foreground" />
+          </div>
+        )}
         {!loading && contacts.length === 0 && (
-          <p className="text-sm text-muted-foreground">Nenhum contato sincronizado ainda.</p>
+          <p className="px-3 py-10 text-center text-sm text-muted-foreground">Nenhum contato sincronizado ainda.</p>
         )}
         {!loading && contacts.length > 0 && filteredContacts.length === 0 && (
-          <p className="text-sm text-muted-foreground">Nenhum contato encontrado.</p>
+          <p className="px-3 py-10 text-center text-sm text-muted-foreground">Nenhum contato encontrado.</p>
         )}
-        <ul className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
+        <ul className="space-y-0.5">
           {filteredContacts.map((contact) => {
             const displayName =
               contact.name ?? contact.pushname ?? contact.formattedName ?? contact.contactId;
             const isSelected = selectedChatId === contact.contactId;
+            const unread = unreadChatIds.has(contact.contactId);
 
             return (
               <li key={contact.id}>
@@ -125,27 +139,39 @@ export function ContactsList({ selectedChatId, onSelect }: ContactsListProps) {
                   type="button"
                   onClick={() => onSelect?.(contact.contactId, displayName)}
                   className={cn(
-                    "flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left transition-colors hover:bg-accent",
-                    isSelected && "bg-accent",
+                    "flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors",
+                    isSelected ? "bg-primary text-primary-foreground" : "hover:bg-accent",
                   )}
                 >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{displayName}</p>
-                    <p className="truncate text-xs text-muted-foreground">{contact.contactId}</p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {contact.isGroup && <Badge variant="secondary">Grupo</Badge>}
-                    {contact.isBusiness && <Badge variant="outline">Empresa</Badge>}
-                    {unreadChatIds.has(contact.contactId) && (
-                      <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-primary" />
+                  <span
+                    className={cn(
+                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                      isSelected ? "bg-white/15" : "border bg-muted/60 text-foreground",
                     )}
+                  >
+                    {initials(displayName)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className={cn("truncate text-sm", unread ? "font-semibold" : "font-medium")}>{displayName}</p>
+                    <p
+                      className={cn(
+                        "truncate text-xs",
+                        isSelected ? "text-primary-foreground/60" : "text-muted-foreground",
+                      )}
+                    >
+                      {contact.isGroup
+                        ? "Grupo"
+                        : formatPhone(contact.contactId.split("@")[0]) || contact.contactId}
+                      {contact.isBusiness ? " · Empresa" : ""}
+                    </p>
                   </div>
+                  {unread && <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15" />}
                 </button>
               </li>
             );
           })}
         </ul>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

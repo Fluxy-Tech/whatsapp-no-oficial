@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import { Smartphone } from "lucide-react";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { useSocket } from "@/providers/SocketProvider";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { confirmAction } from "@/components/ui/confirm-dialog";
@@ -112,13 +113,24 @@ export function WhatsappConnectionCard({ canConnect }: { canConnect: boolean }) 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>Conexão com WhatsApp</CardTitle>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+              <Smartphone className="h-5 w-5" />
+            </span>
+            <CardTitle>Conexão com WhatsApp</CardTitle>
+          </div>
           {/* Enquanto inicia, o spinner do card já mostra o "Iniciando...". */}
           {!isStarting && (
-            <Badge variant={isConnected ? "default" : "secondary"}>
+            <span
+              className={cn(
+                "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium",
+                isConnected ? "border-emerald-200/80 bg-emerald-50 text-emerald-700" : "bg-muted/50 text-muted-foreground",
+              )}
+            >
+              <span className={cn("h-1.5 w-1.5 rounded-full", isConnected ? "bg-emerald-500" : "bg-muted-foreground/50")} />
               {STATUS_LABELS[state.status] ?? state.status}
-            </Badge>
+            </span>
           )}
         </div>
         <CardDescription>
@@ -136,8 +148,8 @@ export function WhatsappConnectionCard({ canConnect }: { canConnect: boolean }) 
         )}
 
         {state.status === "QRCODE" && state.qrCode && (
-          <div className="flex flex-col items-center gap-2">
-            <img src={state.qrCode} alt="QR Code do WhatsApp" className="h-56 w-56 rounded-md border" />
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed bg-muted/30 py-6">
+            <img src={state.qrCode} alt="QR Code do WhatsApp" className="h-56 w-56 rounded-xl border bg-white p-2 shadow-soft" />
             <p className="text-sm text-muted-foreground">
               Abra o WhatsApp no celular e escaneie o código acima.
             </p>

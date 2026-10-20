@@ -145,7 +145,7 @@ export function EventDrawer({
             <DrawerDescription className="flex flex-wrap items-center gap-2">
               {editing ? "Atualize os dados do compromisso." : "Agende uma reunião ou compromisso no calendário."}
               {editing?.source === "ai" && (
-                <span className="inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground">
                   <Bot className="h-3 w-3" />
                   Agendado pela IA
                 </span>

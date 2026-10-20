@@ -66,9 +66,9 @@ export function PermissionsCard() {
       <CardContent className="space-y-3">
         {error && <p className="text-sm text-destructive">{error}</p>}
         {matrix && (
-          <div className="overflow-x-auto rounded-md border">
+          <div className="overflow-x-auto rounded-xl border">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+              <thead className="bg-muted/50 text-left text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">Área</th>
                   {CONFIGURABLE_ROLES.map((role) => (

@@ -225,8 +225,11 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
           }
         }}
         className={cn(
-          "flex items-center gap-1 rounded-sm border-l-[3px] hover:bg-primary/20 border-primary bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-foreground",
-          event.status === "canceled" && "border-muted-foreground/40 bg-muted text-muted-foreground line-through",
+          "flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium transition-colors",
+          event.source === "ai"
+            ? "bg-primary text-primary-foreground hover:bg-primary/85"
+            : "border border-border bg-background text-foreground hover:border-foreground/30",
+          event.status === "canceled" && "border-transparent bg-muted text-muted-foreground line-through hover:bg-muted",
         )}
       >
         <span className="min-w-0 flex-1 truncate">
@@ -239,7 +242,7 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
 
   function renderMonth() {
     return (
-      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/80 bg-background">
         <div className="grid shrink-0 grid-cols-7 border-b bg-muted/40">
           {WEEKDAYS.map((weekday) => (
             <div key={weekday} className="py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -262,7 +265,7 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
                 className={cn(
                   "flex min-h-0 flex-col gap-1 overflow-hidden border-b border-r p-2 text-left transition-colors hover:bg-accent/40 [&:nth-child(7n)]:border-r-0",
                   !inMonth && "bg-muted/40",
-                  isSelected && "bg-primary/5",
+                  isSelected && "bg-muted/70 ring-1 ring-inset ring-foreground/15",
                 )}
               >
                 <span
@@ -289,7 +292,7 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
   function renderTimeGrid(days: Date[]) {
     const now = new Date();
     return (
-      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/80 bg-background">
         <div className="flex shrink-0 border-b bg-muted/40">
           <div className="w-14 shrink-0" />
           {days.map((day) => {
@@ -365,8 +368,11 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
                           openEvent(event);
                         }}
                         className={cn(
-                          "absolute overflow-hidden rounded-md border-l-[3px] border-primary bg-primary/10 px-2 py-1 text-left text-xs hover:bg-primary/20",
-                          event.status === "canceled" && "border-muted-foreground/40 bg-muted text-muted-foreground line-through",
+                          "group/event absolute overflow-hidden rounded-lg px-2 py-1 text-left text-xs shadow-soft transition-colors",
+                          event.source === "ai"
+                            ? "bg-primary text-primary-foreground hover:bg-primary/85"
+                            : "border border-border bg-background hover:border-foreground/30",
+                          event.status === "canceled" && "border-transparent bg-muted text-muted-foreground line-through shadow-none",
                         )}
                         style={{
                           top,
@@ -379,7 +385,7 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
                           <span className="min-w-0 flex-1 truncate font-semibold">{event.title}</span>
                           {needsAssignee(event) && <AttentionDot className="h-2 w-2" label="Agenda sem responsável" />}
                         </span>
-                        <span className="block truncate text-[11px] text-muted-foreground">
+                        <span className="block truncate text-[11px] opacity-60">
                           {TIME_FORMAT.format(start)} – {TIME_FORMAT.format(end)}
                         </span>
                       </button>
@@ -405,11 +411,14 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
   const dayTitle = capitalize(`${WEEKDAY_LONG.format(selected)}, ${selected.getDate()}`).replace(/-(\w)/, (_, c: string) => `-${c.toUpperCase()}`);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border bg-background">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border/80 bg-background shadow-soft">
       {/* Header: title, navigation, view switcher and "Agendar". */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b px-6 py-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b px-6 py-5">
         <div className="flex flex-wrap items-center gap-4">
-          <h2 className="text-lg font-semibold">Calendário</h2>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.1em] text-muted-foreground">CRM · Calendário</p>
+            <h2 className="mt-1 text-2xl font-semibold">Calendário</h2>
+          </div>
           <span className="h-6 w-px bg-border" />
           <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigate(-1)} aria-label="Anterior">
@@ -426,7 +435,7 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex rounded-lg border bg-muted/50 p-1" role="tablist" aria-label="Visualização">
+          <div className="flex rounded-xl border border-border/80 bg-background p-1 shadow-soft" role="tablist" aria-label="Visualização">
             {(Object.keys(VIEW_LABELS) as ViewMode[]).map((mode) => (
               <button
                 key={mode}
@@ -435,8 +444,10 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
                 aria-selected={view === mode}
                 onClick={() => setView(mode)}
                 className={cn(
-                  "rounded-md px-3 py-1 text-sm font-medium transition-colors",
-                  view === mode ? "bg-background text-primary shadow-xs" : "text-muted-foreground hover:text-foreground",
+                  "rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all",
+                  view === mode
+                    ? "bg-primary text-primary-foreground shadow-[0_4px_12px_-4px_oklch(0%_0_0/0.35)]"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
               >
                 {VIEW_LABELS[mode]}
@@ -454,7 +465,7 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
 
       <div className="flex min-h-0 flex-1">
         {/* Calendar */}
-        <div className="min-h-0 min-w-0 flex-1 p-4">
+        <div className="min-h-0 min-w-0 flex-1 bg-muted/30 p-4">
           {view === "month" && renderMonth()}
           {view === "week" && renderTimeGrid(weekDays)}
           {view === "day" && renderTimeGrid([selected])}
@@ -465,7 +476,7 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
           <div className="border-b px-5 py-4">
             <p className="text-lg font-semibold">{dayTitle}</p>
             <p className="text-sm text-muted-foreground">{capitalize(MONTH_YEAR.format(selected))}</p>
-            <span className="mt-2 inline-block rounded bg-primary/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-primary">
+            <span className="mt-3 inline-flex rounded-full bg-primary px-2.5 py-0.5 text-[11px] font-semibold text-primary-foreground">
               {activeEvents(selectedEvents).length} {activeEvents(selectedEvents).length === 1 ? "evento" : "eventos"}
             </span>
           </div>
@@ -474,8 +485,8 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
             {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
             {selectedEvents.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-                <span className="mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                  <CalendarDays className="h-7 w-7 text-muted-foreground" />
+                <span className="mb-2 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-float">
+                  <CalendarDays className="h-6 w-6" />
                 </span>
                 <p className="text-sm font-semibold">Nada agendado</p>
                 <p className="max-w-52 text-xs text-muted-foreground">
@@ -483,8 +494,7 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
                 </p>
                 {canEdit && (
                   <Button
-                    variant="outline"
-                    className="mt-3 w-full border-primary/20 bg-primary/10 font-semibold text-primary hover:bg-primary/15 hover:text-primary"
+                    className="mt-3 w-full"
                     onClick={() => openNew()}
                   >
                     Novo Compromisso
@@ -501,8 +511,8 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
                     onClick={() => openEvent(event)}
                     onKeyDown={(keyEvent) => keyEvent.key === "Enter" && openEvent(event)}
                     className={cn(
-                      "cursor-pointer space-y-1 rounded-md border-l-[3px] border-primary bg-primary/5 p-3 transition-colors hover:bg-primary/10",
-                      event.status === "canceled" && "border-muted-foreground/40 bg-muted/50 opacity-70",
+                      "cursor-pointer space-y-1 rounded-xl border border-l-[3px] border-l-foreground bg-background p-3.5 shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-float",
+                      event.status === "canceled" && "border-l-muted-foreground/40 bg-muted/50 opacity-70 shadow-none",
                     )}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -510,7 +520,7 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
                         {event.title}
                       </p>
                       {event.source === "ai" && (
-                        <span className="flex shrink-0 items-center gap-1 rounded bg-background px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                        <span className="flex shrink-0 items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground">
                           <Bot className="h-3 w-3" />
                           IA
                         </span>
@@ -563,7 +573,7 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
                 {canEdit && (
                   <Button
                     variant="outline"
-                    className="w-full border-primary/20 bg-primary/10 font-semibold text-primary hover:bg-primary/15 hover:text-primary"
+                    className="w-full border-dashed"
                     onClick={() => openNew()}
                   >
                     Novo Compromisso
@@ -580,15 +590,21 @@ export function CalendarView({ canEdit }: CalendarViewProps) {
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <dt>Total de agendamentos</dt>
-                <dd className="font-semibold text-primary">{weekSummary.total}</dd>
+                <dd className="font-semibold tabular-nums">{weekSummary.total}</dd>
               </div>
               <div className="flex justify-between">
-                <dt>Agendados pela IA</dt>
-                <dd className="font-semibold text-emerald-600">{weekSummary.byAi}</dd>
+                <dt className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-primary" />
+                  Agendados pela IA
+                </dt>
+                <dd className="font-semibold tabular-nums">{weekSummary.byAi}</dd>
               </div>
               <div className="flex justify-between">
-                <dt>Cancelados</dt>
-                <dd className="font-semibold text-amber-600">{weekSummary.canceled}</dd>
+                <dt className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
+                  Cancelados
+                </dt>
+                <dd className="font-semibold tabular-nums">{weekSummary.canceled}</dd>
               </div>
             </dl>
           </div>

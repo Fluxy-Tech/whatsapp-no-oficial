@@ -123,9 +123,9 @@ export function MembersCard({ canEdit, canManage }: MembersCardProps) {
       <CardContent className="space-y-6">
         {error && <p className="text-sm text-destructive">{error}</p>}
 
-        <div className="overflow-x-auto rounded-md border">
+        <div className="overflow-x-auto rounded-xl border">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+            <thead className="bg-muted/50 text-left text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 font-medium">Membro</th>
                 <th className="px-3 py-2 font-medium">Cargo</th>

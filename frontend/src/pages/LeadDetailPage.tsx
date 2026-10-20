@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, MessageSquare } from "lucide-react";
 import { api } from "@/lib/api";
+import { formatPhone } from "@/lib/dashboard";
 import type { AgentsResponse } from "@/lib/agents";
 import { targetLabel, type Target } from "@/lib/leads";
 import { usePermission } from "@/providers/OrganizationProvider";
 import { useSocket } from "@/providers/SocketProvider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page-header";
 import { Spinner } from "@/components/ui/spinner";
 import { TargetDetail } from "@/components/TargetDetail";
 
@@ -64,11 +66,31 @@ export function LeadDetailPage() {
   }
 
   return (
-    <div className="w-full space-y-4">
-      <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard/leads")}>
-        <ArrowLeft className="h-4 w-4" />
-        Voltar para leads
-      </Button>
+    <div className="mx-auto w-full max-w-5xl space-y-6">
+      <PageHeader
+        leading={
+          <Button
+            variant="outline"
+            size="icon"
+            className="mt-1 shrink-0"
+            aria-label="Voltar para leads"
+            onClick={() => navigate("/dashboard/leads")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        }
+        eyebrow="Lead"
+        title={target ? targetLabel(target) : "Ficha do lead"}
+        description={target ? formatPhone(target.number) || target.targetId : undefined}
+        actions={
+          target && (
+            <Button onClick={() => openChat(target)}>
+              <MessageSquare className="h-4 w-4" />
+              Abrir conversa
+            </Button>
+          )
+        }
+      />
 
       {loading ? (
         <div className="flex justify-center py-16">
@@ -79,7 +101,6 @@ export function LeadDetailPage() {
           target={target}
           metadadoNames={metadadoNames}
           canEdit={canEdit}
-          onOpenChat={openChat}
           onUpdated={(patch) => setTarget((current) => (current ? { ...current, ...patch } : current))}
         />
       ) : (
