@@ -2,6 +2,7 @@ import { rm } from "fs/promises";
 import path from "path";
 import { create, Whatsapp } from "@wppconnect-team/wppconnect";
 import { env } from "../../config/env";
+import { MessageModel } from "../../models/message.model";
 import { publish } from "../../config/rabbitmq";
 import { QUEUES } from "../../queues/queue-names";
 import type { InboundEvent } from "../../types/queue-payloads";
@@ -137,6 +138,82 @@ function waitForDecryption(organizationId: string, client: Whatsapp, messageId: 
     waitingDecryption.delete(key);
     logger.warn(`Mensagem ${messageId} continua criptografada após ${CIPHERTEXT_RETRY_MS.length} tentativas; descartada`);
   }, CIPHERTEXT_RETRY_MS[attempt]);
+}
+
+// Varredura de não lidas (botão na tela de conexão): logo depois de conectar,
+// o WhatsApp Web às vezes não dispara o evento de mensagem nova para uma
+// conversa que ainda não foi aberta nesta sessão. Aqui buscamos as mensagens
+// recebidas de toda conversa com não lidas e mandamos pela fila inbound, como
+// se tivessem acabado de chegar: o backend grava o contato e repassa ao agente.
+const UNREAD_PER_CHAT = 50;
+const SWEEP_TIMEOUT_MS = 90_000;
+const sweeping = new Set<string>();
+
+export type UnreadSweepResult = {
+  /** Conversas individuais com mensagens não lidas. */
+  chats: number;
+  /** Mensagens recebidas ainda não salvas, mandadas para processamento. */
+  queued: number;
+  /** Já estavam salvas (o agente já recebeu): não vão de novo. */
+  alreadySaved: number;
+  /** Ainda criptografadas: entram sozinhas quando o WhatsApp abrir. */
+  waitingDecryption: number;
+};
+
+export async function sweepUnreadMessages(organizationId: string): Promise<UnreadSweepResult | null> {
+  const client = getClient(organizationId);
+  if (!client) return null;
+  if (sweeping.has(organizationId)) throw new Error("Já existe uma varredura em andamento para esta sessão");
+  sweeping.add(organizationId);
+
+  try {
+    const { chats, messages } = await withTimeout(
+      client.page.evaluate(async (perChat) => {
+        const { WPP, WAPI } = globalThis as any;
+        const messages: unknown[] = [];
+        let chats = 0;
+        for (const chat of await WPP.chat.list({ onlyWithUnreadMessage: true })) {
+          if (chat.isGroup || !["c.us", "lid"].includes(chat.id?.server)) continue;
+          chats++;
+          const count = Math.min(Math.max(chat.unreadCount ?? 0, 1), perChat);
+          const msgs = await WPP.chat.getMessages(chat.id, { count }).catch(() => []);
+          for (const msg of msgs) {
+            if (msg.id?.fromMe) continue;
+            const serialized = WAPI.processMessageObj(msg, true, false);
+            if (serialized) messages.push(serialized);
+          }
+        }
+        return { chats, messages };
+      }, UNREAD_PER_CHAT),
+      SWEEP_TIMEOUT_MS,
+    );
+
+    const result: UnreadSweepResult = { chats, queued: 0, alreadySaved: 0, waitingDecryption: 0 };
+    // Mais antigas primeiro: o agente recebe a conversa na ordem em que foi escrita.
+    const plains = messages.map(toPlainMessage).sort((a, b) => (Number(a.t) || 0) - (Number(b.t) || 0));
+    for (const plain of plains) {
+      if (typeof plain.id !== "string") continue;
+      if (plain.type === "ciphertext") {
+        waitForDecryption(organizationId, client, plain.id);
+        result.waitingDecryption++;
+        continue;
+      }
+      if (await MessageModel.exists({ organizationId, messageId: plain.id })) {
+        result.alreadySaved++;
+        continue;
+      }
+      publishInbound({ kind: "message", organizationId, message: plain });
+      result.queued++;
+    }
+
+    logger.info(
+      `[${organizationId}] varredura de não lidas: ${result.chats} conversa(s), ${result.queued} mensagem(ns) para processar, ` +
+        `${result.alreadySaved} já salva(s), ${result.waitingDecryption} criptografada(s)`,
+    );
+    return result;
+  } finally {
+    sweeping.delete(organizationId);
+  }
 }
 
 function attachListeners(organizationId: string, client: Whatsapp) {

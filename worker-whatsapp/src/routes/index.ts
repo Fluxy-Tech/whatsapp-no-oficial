@@ -18,6 +18,7 @@ api.use(requireApiKey);
 api.get("/sessions/:organizationId", sessionController.show);
 api.post("/sessions/:organizationId/start", sessionController.start);
 api.post("/sessions/:organizationId/stop", sessionController.stop);
+api.post("/sessions/:organizationId/sweep-unread", sessionController.sweepUnread);
 
 // Contatos: guardados pelo backend (Postgres); aqui só forçamos uma atualização vinda do WhatsApp.
 api.post("/organizations/:organizationId/contacts/reconcile-lid", contactController.reconcileLid);

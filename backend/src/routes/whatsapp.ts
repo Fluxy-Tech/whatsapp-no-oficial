@@ -2,6 +2,7 @@ import { Router } from "express";
 import { whatsappEvents } from "../lib/events";
 import { requireAuth, requireMember, requirePermission } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
+import { workerClient } from "../lib/worker-client";
 import { acknowledgeChatHandoffs, listChatHandoffs, listPendingHandoffs } from "../services/human-handoff.service";
 import { parseExtras, targetView } from "../services/target.service";
 import {
@@ -40,6 +41,14 @@ router.post("/disconnect", requirePermission("configuracoes", "edit"), async (re
   const organizationId = req.member!.organizationId;
   await stopWhatsappSession(organizationId);
   res.json({ message: "WhatsApp session disconnected" });
+});
+
+// Unread sweep: right after connecting, WhatsApp Web may not report messages of
+// conversations not opened yet. This collects them and sends them through the
+// normal flow (contact + AI agent).
+router.post("/sweep-unread", requirePermission("configuracoes", "edit"), async (req, res) => {
+  const organizationId = req.member!.organizationId;
+  res.json(await workerClient.sweepUnread(organizationId));
 });
 
 // Logs the number out of WhatsApp (unlinks the device) and deletes the saved

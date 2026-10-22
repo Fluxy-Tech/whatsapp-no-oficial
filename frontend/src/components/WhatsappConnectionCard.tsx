@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Smartphone } from "lucide-react";
+import { MessageSquareDot, Smartphone } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useSocket } from "@/providers/SocketProvider";
@@ -13,6 +13,24 @@ type WhatsappStatus = {
   qrCode: string | null;
   phoneNumber: string | null;
 };
+
+type UnreadSweep = {
+  chats: number;
+  queued: number;
+  alreadySaved: number;
+  waitingDecryption: number;
+};
+
+function sweepSummary({ chats, queued, alreadySaved, waitingDecryption }: UnreadSweep) {
+  if (chats === 0) return "Nenhuma conversa com mensagens não lidas.";
+  const parts = [
+    `${chats} conversa(s) com mensagens não lidas`,
+    `${queued} mensagem(ns) nova(s) enviada(s) para o agente`,
+  ];
+  if (alreadySaved) parts.push(`${alreadySaved} já estava(m) na plataforma`);
+  if (waitingDecryption) parts.push(`${waitingDecryption} ainda criptografada(s), entram quando o WhatsApp liberar`);
+  return parts.join(" · ");
+}
 
 const STATUS_LABELS: Record<string, string> = {
   DISCONNECTED: "Desconectado",
@@ -32,7 +50,8 @@ const STARTING_STATUSES = new Set(["STARTING", "OPENING", "PAIRING"]);
 export function WhatsappConnectionCard({ canConnect }: { canConnect: boolean }) {
   const socket = useSocket();
   const [state, setState] = useState<WhatsappStatus>({ status: "DISCONNECTED", qrCode: null, phoneNumber: null });
-  const [loading, setLoading] = useState<"connect" | "disconnect" | "logout" | null>(null);
+  const [loading, setLoading] = useState<"connect" | "disconnect" | "logout" | "sweep" | null>(null);
+  const [sweepResult, setSweepResult] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     const refresh = () => api<WhatsappStatus>("/api/whatsapp/status").then(setState).catch(() => {});
@@ -80,6 +99,22 @@ export function WhatsappConnectionCard({ canConnect }: { canConnect: boolean }) 
     try {
       await api("/api/whatsapp/disconnect", { method: "POST" });
       setState((prev) => ({ ...prev, status: "DISCONNECTED", qrCode: null }));
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  // Logo depois de conectar, o WhatsApp Web pode não avisar mensagens de
+  // conversas que ainda não foram abertas: a varredura busca as não lidas e
+  // manda as que faltam para a plataforma e o agente.
+  async function handleSweep() {
+    setLoading("sweep");
+    setSweepResult(null);
+    try {
+      const result = await api<UnreadSweep>("/api/whatsapp/sweep-unread", { method: "POST" });
+      setSweepResult({ ok: true, text: sweepSummary(result) });
+    } catch (error) {
+      setSweepResult({ ok: false, text: (error as Error).message });
     } finally {
       setLoading(null);
     }
@@ -163,7 +198,7 @@ export function WhatsappConnectionCard({ canConnect }: { canConnect: boolean }) 
         )}
 
         {canConnect && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {!isConnected ? (
               !isConnecting && (
                 <Button onClick={handleConnect} disabled={loading !== null}>
@@ -172,6 +207,10 @@ export function WhatsappConnectionCard({ canConnect }: { canConnect: boolean }) 
               )
             ) : (
               <>
+                <Button onClick={handleSweep} disabled={loading !== null}>
+                  {loading === "sweep" ? <Spinner className="size-4" /> : <MessageSquareDot className="h-4 w-4" />}
+                  {loading === "sweep" ? "Varrendo conversas..." : "Varrer conversas não lidas"}
+                </Button>
                 <Button variant="outline" onClick={handleDisconnect} disabled={loading !== null}>
                   {loading === "disconnect" ? "Desconectando..." : "Desconectar"}
                 </Button>
@@ -181,6 +220,13 @@ export function WhatsappConnectionCard({ canConnect }: { canConnect: boolean }) 
               </>
             )}
           </div>
+        )}
+
+        {canConnect && isConnected && (
+          <p className={cn("text-sm", sweepResult && !sweepResult.ok ? "text-destructive" : "text-muted-foreground")}>
+            {sweepResult?.text ??
+              "Depois de conectar, use a varredura para trazer as mensagens que os clientes mandaram e ainda não apareceram na plataforma. Elas vão para o agente responder."}
+          </p>
         )}
       </CardContent>
     </Card>

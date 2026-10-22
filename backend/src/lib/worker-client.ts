@@ -4,6 +4,8 @@
 const WORKER_URL = (process.env.WORKER_URL ?? "http://localhost:6801").replace(/\/+$/, "");
 const WORKER_API_KEY = process.env.WORKER_API_KEY ?? "";
 const REQUEST_TIMEOUT_MS = 15_000;
+// The worker reads every unread conversation through the browser.
+const SWEEP_TIMEOUT_MS = 120_000;
 
 export class WorkerError extends Error {
   constructor(
@@ -55,6 +57,13 @@ export type WorkerMessage = {
   updatedAt: string;
 };
 
+export type WorkerUnreadSweep = {
+  chats: number;
+  queued: number;
+  alreadySaved: number;
+  waitingDecryption: number;
+};
+
 export type WorkerMedia = {
   url: string;
   mimetype: string | null;
@@ -62,7 +71,7 @@ export type WorkerMedia = {
   size: number | null;
 };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${WORKER_URL}${path}`, {
@@ -72,7 +81,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         "x-api-key": WORKER_API_KEY,
         ...(init?.headers ?? {}),
       },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
     throw new WorkerError(502, `worker-whatsapp is unreachable: ${(error as Error).message}`);
@@ -102,6 +111,15 @@ export const workerClient = {
       method: "POST",
       body: JSON.stringify({ logout }),
     });
+  },
+
+  /** Unread conversations: received messages not saved yet go through the normal flow (and to the agent). */
+  sweepUnread(organizationId: string) {
+    return request<WorkerUnreadSweep>(
+      `/api/sessions/${org(organizationId)}/sweep-unread`,
+      { method: "POST" },
+      SWEEP_TIMEOUT_MS,
+    );
   },
 
   listMessages(organizationId: string, chatId: string, limit = 200) {
