@@ -8,7 +8,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { ColumnChart } from "@/components/charts/ColumnChart";
 
 type Period = "year" | "month" | "day";
-type Kind = "reply" | "notification" | "rag_query" | "rag_ingest" | "validation";
+type Kind = "reply" | "notification" | "rag_query" | "rag_ingest" | "validation" | "handoff";
 type Tokens = { input: number; output: number; total: number };
 
 type TokenUsage = {
@@ -34,6 +34,7 @@ const KIND_LABELS: Record<Kind, { label: string; description: string }> = {
   rag_query: { label: "Busca nos documentos", description: "Consultas à base de conhecimento (OpenAI)" },
   rag_ingest: { label: "Leitura de documentos", description: "Indexação dos documentos do RAG (OpenAI)" },
   validation: { label: "Validações", description: "Análise de imagens e validação de dados (JEV)" },
+  handoff: { label: "Relatórios de atendimento", description: "Resumo da conversa quando o cliente pede um atendente (OpenAI)" },
 };
 const MONTHS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 const MONTH_NAMES = [

@@ -57,7 +57,7 @@ const MEDIA_LABELS: Record<string, string> = {
 
 // The agent only reads text. Media becomes a short description (plus its
 // caption) so it can still react, e.g. ask the person to type the question.
-function messageText(message: WorkerMessage) {
+export function contactMessageText(message: WorkerMessage) {
   if (message.type === "chat") return message.body?.trim() ?? "";
   const label = MEDIA_LABELS[message.type] ?? `uma mensagem do tipo ${message.type}`;
   const caption = (message.caption ?? message.body ?? "").trim();
@@ -65,7 +65,7 @@ function messageText(message: WorkerMessage) {
 }
 
 /** What the attendant (or the company's phone) sent, as the agent reads it. */
-function sentMessageText(message: WorkerMessage) {
+export function sentMessageText(message: WorkerMessage) {
   if (message.type === "chat") return message.body?.trim() ?? "";
   const label = MEDIA_LABELS[message.type] ?? `uma mensagem do tipo ${message.type}`;
   const caption = (message.caption ?? message.body ?? "").trim();
@@ -91,7 +91,7 @@ async function manualMessages(organizationId: string, contact: Target, turnMessa
     .map((message) => ({
       id: message.messageId,
       fromMe: message.fromMe,
-      text: message.fromMe ? sentMessageText(message) : messageText(message),
+      text: message.fromMe ? sentMessageText(message) : contactMessageText(message),
       timestamp: message.timestamp,
     }))
     .filter((message) => message.text)
@@ -109,7 +109,7 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
     .map((message) => ({
       messageId: message.messageId,
       type: message.type,
-      text: messageText(message),
+      text: contactMessageText(message),
       timestamp: message.timestamp,
       // Agents that read media (JEV image validation) download it from S3;
       // link opens it in the platform (saved with approved images).
@@ -196,6 +196,7 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
         numberPhoneNotification: agent.numberPhoneNotification,
         descriptionNotification: agent.descriptionNotification,
         historyMessages: agent.historyMessages,
+        humanHandoffEnabled: agent.humanHandoffEnabled,
         rgbs: {
           enabled: agent.rgbsEnabled,
           timeSmall: agent.timeSmall,
@@ -239,6 +240,16 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
       data: { agentSyncedAt: new Date() },
     });
   }
+}
+
+/** Whether the AI agent answers this contact (screen: new message sound only when it doesn't). */
+export async function agentAnswersContact(organizationId: string, contact: Target) {
+  if (!contact.agentActive) return false;
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { agent: { select: { active: true, context: true } } },
+  });
+  return canAnswer(organization?.agent);
 }
 
 /** Called for every message.received webhook from worker-whatsapp. */

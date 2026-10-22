@@ -11,7 +11,7 @@ export class TokenUsageError extends Error {
   }
 }
 
-export const TOKEN_KINDS = ["reply", "notification", "rag_query", "rag_ingest", "validation"] as const;
+export const TOKEN_KINDS = ["reply", "notification", "rag_query", "rag_ingest", "validation", "handoff"] as const;
 type TokenKind = (typeof TOKEN_KINDS)[number];
 
 type UsageInput = {

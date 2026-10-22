@@ -86,6 +86,8 @@ export type Agent = {
   requireContactName: boolean;
   /** History window: previous messages (contact + agent) sent to the model with the current one; 0 = no limit. */
   historyMessages: number;
+  /** The agent hands the conversation over to an attendant when the contact asks for a person. */
+  humanHandoffEnabled: boolean;
   /** Kanban: create the lead on the first message, in leadStageId. */
   leadOnFirstMessage: boolean;
   leadStageId: string | null;

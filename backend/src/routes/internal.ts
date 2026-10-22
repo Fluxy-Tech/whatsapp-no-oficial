@@ -8,6 +8,7 @@ import {
   listLeadMeetings,
   rescheduleLeadMeeting,
 } from "../services/calendar.service";
+import { HumanHandoffError, requestHumanHandoff } from "../services/human-handoff.service";
 import { onMetadataCollected } from "../services/kanban.service";
 import { recordTokenUsage, TokenUsageError } from "../services/token-usage.service";
 import { prisma } from "../lib/prisma";
@@ -71,6 +72,14 @@ router.patch("/targets/:organizationId/:chatId/extras", async (req, res) => {
   res.json(view);
 });
 
+// AI-Worker (solicitar_atendimento_humano): the contact asked for a person.
+// Pauses the agent for the contact and alerts the attendants.
+router.post("/targets/:organizationId/:chatId/human-handoff", async (req, res) => {
+  res
+    .status(201)
+    .json(await requestHumanHandoff(String(req.params.organizationId), String(req.params.chatId), req.body ?? {}));
+});
+
 // AI-Worker scheduling tools: free slots of a date, booking, and the contact's
 // own meetings (list and reschedule).
 router.get("/calendar/:organizationId/availability", async (req, res) => {
@@ -98,6 +107,7 @@ router.post("/agents/:agentId/token-usage", async (req, res) => {
 
 router.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
   if (error instanceof TokenUsageError) return res.status(error.status).json({ error: error.message });
+  if (error instanceof HumanHandoffError) return res.status(error.status).json({ error: error.message });
   if (error instanceof CalendarError) {
     return res.status(error.status).json({ error: error.message, ...(error.details ?? {}) });
   }

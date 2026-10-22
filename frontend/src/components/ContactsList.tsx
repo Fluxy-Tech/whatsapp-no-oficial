@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Headset, Search } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatPhone, initials } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
+import { useHandoffs } from "@/providers/HandoffProvider";
 import { useSocket } from "@/providers/SocketProvider";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
@@ -29,6 +30,7 @@ export function ContactsList({ selectedChatId, onSelect }: ContactsListProps) {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
   const [unreadChatIds, setUnreadChatIds] = useState<Set<string>>(new Set());
+  const { pendingChatIds } = useHandoffs();
 
   function loadContacts() {
     api<Contact[]>("/api/whatsapp/contacts")
@@ -132,6 +134,7 @@ export function ContactsList({ selectedChatId, onSelect }: ContactsListProps) {
               contact.name ?? contact.pushname ?? contact.formattedName ?? contact.contactId;
             const isSelected = selectedChatId === contact.contactId;
             const unread = unreadChatIds.has(contact.contactId);
+            const waitingAttendant = pendingChatIds.has(contact.contactId);
 
             return (
               <li key={contact.id}>
@@ -165,7 +168,16 @@ export function ContactsList({ selectedChatId, onSelect }: ContactsListProps) {
                       {contact.isBusiness ? " · Empresa" : ""}
                     </p>
                   </div>
-                  {unread && <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15" />}
+                  {waitingAttendant ? (
+                    <span
+                      title="Pediu atendimento humano: o agente foi desativado"
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-500 text-white ring-4 ring-red-500/15"
+                    >
+                      <Headset className="h-3.5 w-3.5" />
+                    </span>
+                  ) : (
+                    unread && <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15" />
+                  )}
                 </button>
               </li>
             );

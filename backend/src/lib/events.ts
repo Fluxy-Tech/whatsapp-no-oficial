@@ -1,4 +1,5 @@
 import { EventEmitter } from "events";
+import type { HumanHandoffView } from "../services/human-handoff.service";
 import type { TargetView } from "../services/target.service";
 import type { WorkerMessage } from "./worker-client";
 
@@ -18,6 +19,8 @@ export type WhatsappMessageEvent = {
   chatId: string;
   message: WorkerMessage;
   contact: TargetView;
+  /** Received messages: whether the AI agent answers this contact. */
+  agentAnswering?: boolean;
 };
 
 export type WhatsappMessageAckEvent = {
@@ -49,6 +52,19 @@ export type AgentDocumentStatusEvent = {
   error?: string | null;
   updatedAt: string;
 };
+
+/** The contact asked for a person: the agent was paused and the attendants are alerted. */
+export type HandoffRequestedEvent = {
+  organizationId: string;
+  handoff: HumanHandoffView;
+  contact: TargetView;
+};
+
+/** The report of a handoff is ready (or failed). */
+export type HandoffUpdatedEvent = { organizationId: string; handoff: HumanHandoffView };
+
+/** An attendant opened the conversation: its alerts go away. */
+export type HandoffAcknowledgedEvent = { organizationId: string; chatId: string };
 
 /** Kanban / calendar changed: the dashboard reloads. */
 export type OrganizationEvent = { organizationId: string };

@@ -80,6 +80,8 @@ export type AgentInput = {
   requireContactName?: boolean;
   /** Previous messages sent to the model with the current one; 0 = no limit. */
   historyMessages?: unknown;
+  /** The agent can hand the conversation over to an attendant (solicitar_atendimento_humano). */
+  humanHandoffEnabled?: boolean;
   /** Messages that reset the conversation when sent alone (full list). */
   resetKeywords?: string[];
   /** Sent when a reset keyword ends the conversation; empty = default phrase. */
@@ -174,6 +176,7 @@ export function agentView(agent: AgentWithMetadados, activeAgentId: string | nul
     leadOnFirstMessage: agent.leadOnFirstMessage,
     requireContactName: agent.requireContactName,
     historyMessages: agent.historyMessages,
+    humanHandoffEnabled: agent.humanHandoffEnabled,
     leadStageId: agent.leadStageId,
     completedStageId: agent.completedStageId,
     leadAssigneeId: agent.leadAssigneeId,
@@ -431,6 +434,7 @@ export async function createAgent(organizationId: string, input: AgentInput) {
       leadOnFirstMessage: input.leadOnFirstMessage ?? false,
       requireContactName: input.requireContactName ?? false,
       ...(input.historyMessages !== undefined && { historyMessages: historyMessagesOf(input.historyMessages) }),
+      humanHandoffEnabled: input.humanHandoffEnabled ?? false,
       leadStageId: input.leadStageId ?? null,
       completedStageId: input.completedStageId ?? null,
       leadAssigneeId: input.leadAssigneeId ?? null,
@@ -479,6 +483,7 @@ export async function updateAgent(organizationId: string, agentId: string, input
   if (input.leadOnFirstMessage !== undefined) data.leadOnFirstMessage = input.leadOnFirstMessage;
   if (input.requireContactName !== undefined) data.requireContactName = input.requireContactName;
   if (input.historyMessages !== undefined) data.historyMessages = historyMessagesOf(input.historyMessages);
+  if (input.humanHandoffEnabled !== undefined) data.humanHandoffEnabled = input.humanHandoffEnabled;
   await validateStageIds(organizationId, [
     input.leadStageId,
     input.completedStageId,

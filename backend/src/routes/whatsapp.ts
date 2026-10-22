@@ -2,6 +2,7 @@ import { Router } from "express";
 import { whatsappEvents } from "../lib/events";
 import { requireAuth, requireMember, requirePermission } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
+import { acknowledgeChatHandoffs, listChatHandoffs, listPendingHandoffs } from "../services/human-handoff.service";
 import { parseExtras, targetView } from "../services/target.service";
 import {
   getWhatsappStatus,
@@ -83,6 +84,21 @@ router.get("/contacts/:chatId", requirePermission("conversas", "view"), async (r
   });
   if (!target) return res.status(404).json({ error: "Contact not found" });
   res.json(targetView(target));
+});
+
+// Human handoff: conversations waiting for an attendant (badges/alerts).
+router.get("/handoffs/pending", requirePermission("conversas", "view"), async (req, res) => {
+  res.json(await listPendingHandoffs(req.member!.organizationId));
+});
+
+// Reports (summary + key points) written when the contact asked for a person.
+router.get("/contacts/:chatId/handoffs", requirePermission("conversas", "view"), async (req, res) => {
+  res.json(await listChatHandoffs(req.member!.organizationId, String(req.params.chatId)));
+});
+
+// The attendant opened the conversation: clears its alerts.
+router.post("/contacts/:chatId/handoffs/acknowledge", requirePermission("conversas", "view"), async (req, res) => {
+  res.json(await acknowledgeChatHandoffs(req.member!.organizationId, String(req.params.chatId)));
 });
 
 // Conversation screen: pauses/resumes the AI agent for this contact only, so

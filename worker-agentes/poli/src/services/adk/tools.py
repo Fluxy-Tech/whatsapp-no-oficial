@@ -226,3 +226,23 @@ def build_validar_imagem(metadados: list[dict], api_key: str | None, uso: UsoTok
         return {"ok": True, "aprovada": True, "regras": regras}
 
     return validar_imagem
+
+
+def build_atendimento_humano(organization_id: str, agent_id: str, chat_id: str):
+    """O contato pediu para falar com uma pessoa: o backend pausa o agente para
+    este contato e avisa os atendentes, que continuam a conversa."""
+
+    async def solicitar_atendimento_humano(motivo: str) -> dict:
+        """Transfere a conversa para um atendente humano. Chame quando o contato
+        pedir para falar com uma pessoa. `motivo`: em poucas palavras, por que o
+        contato quer um atendente. Depois disso você não responde mais este
+        contato; avise que um atendente vai continuar a conversa."""
+        try:
+            ok, corpo = await backend.solicitar_atendimento_humano(organization_id, agent_id, chat_id, motivo)
+        except Exception as error:
+            return {"ok": False, "erro": f"Não foi possível chamar um atendente agora: {error}"}
+        if not ok:
+            return {"ok": False, "erro": corpo.get("error")}
+        return {"ok": True}
+
+    return solicitar_atendimento_humano

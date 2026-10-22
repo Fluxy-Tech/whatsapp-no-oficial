@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import express, { Router } from "express";
 import { whatsappEvents } from "../lib/events";
-import { handleIncomingMessage } from "../services/ai-dispatcher.service";
+import { agentAnswersContact, handleIncomingMessage } from "../services/ai-dispatcher.service";
 import {
   handleCampaignResponse,
   onCampaignMessageAck,
@@ -104,11 +104,17 @@ async function dispatch(payload: WorkerWebhook) {
           console.error(`Failed to create the kanban lead for ${target.chatId}:`, error),
         );
       }
+      // Received messages the agent won't answer ring on the attendants' screen.
+      const agentAnswering =
+        event === "message.received"
+          ? await agentAnswersContact(organizationId, target).catch(() => false)
+          : undefined;
       whatsappEvents.emit("message", {
         organizationId,
         chatId: data.message.chatId,
         message: data.message,
         contact: targetView(target),
+        agentAnswering,
       });
       break;
     }

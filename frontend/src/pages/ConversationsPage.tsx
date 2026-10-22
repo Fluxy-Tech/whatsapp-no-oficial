@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { ContactsList } from "@/components/ContactsList";
@@ -12,6 +12,13 @@ export function ConversationsPage() {
 
   const [selectedChatId, setSelectedChatId] = useState<string | null>(navState?.initialChatId ?? null);
   const [selectedChatLabel, setSelectedChatLabel] = useState<string | null>(navState?.initialLabel ?? null);
+
+  // Opened from an alert while already on this page.
+  useEffect(() => {
+    if (!navState?.initialChatId) return;
+    setSelectedChatId(navState.initialChatId);
+    setSelectedChatLabel(navState.initialLabel ?? null);
+  }, [navState?.initialChatId, navState?.initialLabel, location.key]);
 
   function handleSelectChat(chatId: string, label: string) {
     setSelectedChatId(chatId);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BookOpen, Coins, ImageIcon, Save, Trash2, UserRound, Workflow } from "lucide-react";
+import { BookOpen, Coins, Headset, ImageIcon, Save, Trash2, UserRound, Workflow } from "lucide-react";
 import { TokenUsagePanel } from "@/components/agents/TokenUsagePanel";
 import { api } from "@/lib/api";
 import { queueKey, type Agent, type SecretInfo } from "@/lib/agents";
@@ -40,6 +40,7 @@ type Form = {
   metadados: MetadadoDraft[];
   requireContactName: boolean;
   historyMessages: string;
+  humanHandoffEnabled: boolean;
   resetKeywords: string[];
   resetMessage: string;
   numberPhoneNotification: string;
@@ -75,6 +76,7 @@ function toForm(agent: Agent | null): Form {
     })),
     requireContactName: agent?.requireContactName ?? false,
     historyMessages: String(agent?.historyMessages ?? 4),
+    humanHandoffEnabled: agent?.humanHandoffEnabled ?? false,
     resetKeywords: agent?.resetKeywords ?? [],
     resetMessage: agent?.resetMessage ?? DEFAULT_RESET_MESSAGE,
     numberPhoneNotification: agent?.numberPhoneNotification ?? "",
@@ -226,6 +228,7 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
         })),
         requireContactName: form.requireContactName,
         historyMessages: Number(form.historyMessages),
+        humanHandoffEnabled: form.humanHandoffEnabled,
         resetKeywords: form.resetKeywords,
         resetMessage: form.resetMessage,
         numberPhoneNotification: form.numberPhoneNotification.trim() || null,
@@ -514,6 +517,37 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
               </Card>
 
               <RgbsCard value={form.rgbs} onChange={(rgbs) => setForm({ ...form, rgbs })} disabled={disabled} />
+
+              <Card>
+                <CardHeader>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1.5">
+                      <CardTitle className="flex items-center gap-2">
+                        <Headset className="h-4 w-4" />
+                        Atendimento humano
+                      </CardTitle>
+                      <CardDescription>
+                        Quando o contato pedir para falar com uma pessoa, o agente para de responder esse contato
+                        (desliga o switch na conversa), avisa os atendentes na tela com som e gera com a OpenAI um
+                        relatório da conversa para quem for continuar o atendimento.
+                      </CardDescription>
+                    </div>
+                    <Switch
+                      checked={form.humanHandoffEnabled}
+                      onCheckedChange={(humanHandoffEnabled) => setForm({ ...form, humanHandoffEnabled })}
+                      disabled={disabled}
+                      aria-label="Atendimento humano"
+                    />
+                  </div>
+                </CardHeader>
+                {form.humanHandoffEnabled && !agent?.tokenOpenAi.configured && !form.tokenOpenAi.value.trim() && (
+                  <CardContent>
+                    <p className="text-sm text-destructive">
+                      Configure o Token OpenAI no perfil do agente para gerar o relatório da conversa.
+                    </p>
+                  </CardContent>
+                )}
+              </Card>
 
               <Card>
                 <CardHeader>

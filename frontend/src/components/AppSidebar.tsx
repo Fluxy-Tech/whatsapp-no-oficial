@@ -8,6 +8,7 @@ import { NAV_SECTIONS, isLinkActive, type NavLink } from "@/lib/navigation";
 import { roleLabel, type Module } from "@/lib/organization";
 import { cn } from "@/lib/utils";
 import { useWhatsappStatus } from "@/lib/whatsapp-status";
+import { useHandoffs } from "@/providers/HandoffProvider";
 import { useOrganization } from "@/providers/OrganizationProvider";
 import { MemberAvatar } from "@/components/dashboard/MemberAvatar";
 import {
@@ -42,6 +43,7 @@ export function AppSidebar({
   const { data: activeOrganization } = authClient.useActiveOrganization();
   const { current } = useOrganization();
   const whatsapp = useWhatsappStatus();
+  const { pendingChatIds } = useHandoffs();
 
   const canSee = (module: Module) => Boolean(current && current.permissions[module] !== "none");
 
@@ -58,6 +60,8 @@ export function AppSidebar({
   function renderLink(link: NavLink) {
     const Icon = link.icon;
     const active = isLinkActive(link, location.pathname);
+    // Conversations waiting for an attendant (the contact asked for a person).
+    const badge = link.module === "conversas" ? pendingChatIds.size : 0;
     return (
       <button
         key={link.href}
@@ -75,6 +79,17 @@ export function AppSidebar({
       >
         <Icon className={cn("h-[18px] w-[18px] shrink-0", !active && "opacity-80 group-hover:opacity-100")} />
         {!collapsed && <span className="flex-1 truncate text-left">{link.label}</span>}
+        {badge > 0 && (
+          <span
+            title={`${badge} cliente(s) pediram atendimento humano`}
+            className={cn(
+              "flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-semibold tabular-nums text-white ring-2 ring-background",
+              collapsed && "absolute right-1.5 top-1",
+            )}
+          >
+            {badge}
+          </span>
+        )}
       </button>
     );
   }

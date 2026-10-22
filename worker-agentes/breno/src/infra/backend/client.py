@@ -60,6 +60,19 @@ def agendar_reuniao(
     return response.is_success, response.json()
 
 
+def solicitar_atendimento_humano(organization_id: str, agent_id: str, chat_id: str, motivo: str) -> tuple[bool, dict]:
+    """O contato pediu um atendente: o backend pausa o agente para o contato,
+    avisa os atendentes na tela e gera o relatório da conversa. Retorna (ok, corpo)."""
+    response = httpx.post(
+        f"{config.BACKEND_URL}/api/internal/targets/{quote(organization_id, safe='')}/{quote(chat_id, safe='')}/human-handoff",
+        json={"agentId": agent_id, "reason": motivo},
+        headers={"x-api-key": config.BACKEND_INTERNAL_API_KEY},
+        timeout=10,
+    )
+    if response.status_code >= 500:
+        response.raise_for_status()
+    return response.is_success, response.json()
+
 def enviar_uso_de_tokens(agent_id: str, itens: list[dict]) -> None:
     """Registra no backend os tokens gastos pelo agente (tabela agent_token_usage)."""
     response = httpx.post(

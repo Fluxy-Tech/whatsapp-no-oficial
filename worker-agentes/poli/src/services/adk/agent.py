@@ -26,6 +26,7 @@ from src.services.tokens import UsoTokens
 from src.services.adk.historico import limitar_historico, limite_do_agente
 from src.services.adk.tools import (
     build_agendamento,
+    build_atendimento_humano,
     build_consultar_conhecimento,
     build_estimar_preco,
     build_registrar_metadado,
@@ -141,6 +142,20 @@ retornada como estimativa, deixando claro que o valor final é confirmado pela
 tatuadora. Nunca calcule ou invente preços; se a ferramenta não retornar
 ok=true, siga a orientação do erro."""
 
+HUMANO_INSTRUCTION = """
+## Atendimento humano
+
+Se o contato pedir para falar com uma pessoa (atendente, humano, vendedor,
+gerente, "pessoa de verdade") ou insistir que não quer falar com um robô,
+chame solicitar_atendimento_humano com o motivo em poucas palavras. Não chame
+só porque o contato tem uma dúvida que você consegue responder.
+- Se a ferramenta retornar ok=true, diga ao contato, em uma mensagem curta, que
+  um atendente vai continuar a conversa em breve, e não faça mais perguntas.
+- Se retornar ok=false, peça desculpas e diga que a equipe vai entrar em
+  contato assim que possível.
+"""
+
+
 QUEBRA_INSTRUCTION = """
 ## Mensagens quebradas
 
@@ -232,6 +247,7 @@ def build_agent(agent_info: dict, contact: dict | None = None, uso: UsoTokens | 
     tem_documentos = bool(agent_info.get("documents"))
     # organizationId é colocado no agent_info pelo consumer (vem no job).
     agenda = bool(agent_info.get("schedulingEnabled") and agent_info.get("organizationId") and contact.get("chatId"))
+    humano = bool(agent_info.get("humanHandoffEnabled") and agent_info.get("organizationId") and contact.get("chatId"))
 
     secoes = [
         _contato(contact, metadados_do_agente(agent_info)),
@@ -252,6 +268,8 @@ def build_agent(agent_info: dict, contact: dict | None = None, uso: UsoTokens | 
         )
     else:
         secoes.append(TATUAGEM_INSTRUCTION.format(orcamento=ORCAMENTO.format(referencia="apta")))
+    if humano:
+        secoes.append(HUMANO_INSTRUCTION)
     if (agent_info.get("rgbs") or {}).get("enabled"):
         secoes.append(QUEBRA_INSTRUCTION.format(marcador=QUEBRA_MENSAGEM))
 
@@ -272,6 +290,8 @@ def build_agent(agent_info: dict, contact: dict | None = None, uso: UsoTokens | 
         )
     if agenda:
         tools.extend(build_agendamento(agent_info["organizationId"], agent_info["id"], contact["chatId"]))
+    if humano:
+        tools.append(build_atendimento_humano(agent_info["organizationId"], agent_info["id"], contact["chatId"]))
 
     return Agent(
         # Nome interno do ADK (sem espaços/acentos); o nome de exibição vai na instrução.

@@ -24,6 +24,7 @@ src/agent/
 │   ├── metadados.py     coleta de dados do contato (registrar_metadado)
 │   ├── conhecimento.py  RAG no pgvector (consultar_conhecimento, grafo buscar -> compilar)
 │   ├── agendamento.py   consultar_horarios / agendar_reuniao (backend)
+│   ├── atendimento_humano.py  solicitar_atendimento_humano (pausa o agente e avisa os atendentes)
 │   ├── quebra.py        mensagens quebradas com [QB]
 │   ├── notificacao.py   aviso de coleta concluída (depois do turno)
 │   └── reset.py         palavra de reset (antes do turno)

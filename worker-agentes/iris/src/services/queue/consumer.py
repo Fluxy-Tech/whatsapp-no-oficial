@@ -10,7 +10,7 @@ manda mensagem e a organização tem um agente ativo com context):
                    "alertPhoneNumber": str | null},
   "agent": {"id", "name", "context", "tokenOpenAi", "tokenAdk",
             "metadados": [{"name", "descricao"}], "documents": [url], "resetKeywords": [str], "resetMessage": str,
-            "numberPhoneNotification": str | null, "descriptionNotification": str, "historyMessages": int, "rgbs": {"enabled": bool, "timeSmall": int, "timeMedium": int, "timeLarge": int},
+            "numberPhoneNotification": str | null, "descriptionNotification": str, "historyMessages": int, "humanHandoffEnabled": bool, "rgbs": {"enabled": bool, "timeSmall": int, "timeMedium": int, "timeLarge": int},
             "schedulingEnabled": bool, "meetingDurationMinutes": int},
   "contact": {"id", "chatId", "number", "name", "extras": {nome: valor}},
   "messages": [{"messageId", "type", "text", "timestamp",

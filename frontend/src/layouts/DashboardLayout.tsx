@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { authClient } from "@/lib/auth-client";
 import { NAV_LINKS } from "@/lib/navigation";
+import { HandoffProvider } from "@/providers/HandoffProvider";
 import { OrganizationProvider, useOrganization } from "@/providers/OrganizationProvider";
 import { AppSidebar } from "@/components/AppSidebar";
 import { CommandPalette } from "@/components/shell/CommandPalette";
@@ -124,7 +125,9 @@ export function DashboardLayout() {
 
   return (
     <OrganizationProvider>
-      <Shell />
+      <HandoffProvider>
+        <Shell />
+      </HandoffProvider>
     </OrganizationProvider>
   );
 }

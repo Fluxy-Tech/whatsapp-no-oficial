@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Bot, MessagesSquare, Pause, Play, SendHorizontal } from "lucide-react";
+import { ArrowLeft, Bot, FileText, MessagesSquare, SendHorizontal } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatPhone, initials } from "@/lib/dashboard";
+import type { HumanHandoff } from "@/lib/handoffs";
 import { cn } from "@/lib/utils";
+import { useHandoffs } from "@/providers/HandoffProvider";
 import { useSocket } from "@/providers/SocketProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import { ChatMessageMedia } from "@/components/ChatMessageMedia";
+import { HandoffReportPanel } from "@/components/HandoffReportPanel";
 
 type Message = {
   id: string;
@@ -50,6 +54,10 @@ export function ChatPanel({ chatId, contactLabel, onBack }: ChatPanelProps) {
   const [agentActive, setAgentActive] = useState<boolean | null>(null);
   const [togglingAgent, setTogglingAgent] = useState(false);
   const [agentError, setAgentError] = useState<string | null>(null);
+  // Reports written when the contact asked for a person (right-side panel).
+  const [handoffs, setHandoffs] = useState<HumanHandoff[]>([]);
+  const [reportOpen, setReportOpen] = useState(false);
+  const { pendingChatIds, acknowledge } = useHandoffs();
   const bottomRef = useRef<HTMLDivElement>(null);
   // Each new message reloads the history; only the latest request may update
   // the screen, or a slower older response would bring back an outdated list.
@@ -116,6 +124,45 @@ export function ChatPanel({ chatId, contactLabel, onBack }: ChatPanelProps) {
   }, [socket, chatId]);
 
   useEffect(() => {
+    setHandoffs([]);
+    setReportOpen(false);
+    if (!chatId) return;
+    let cancelled = false;
+    api<HumanHandoff[]>(`/api/whatsapp/contacts/${encodeURIComponent(chatId)}/handoffs`)
+      .then((items) => {
+        if (cancelled) return;
+        setHandoffs(items);
+        // A conversation handed over by the agent opens with its report.
+        if (items.some((handoff) => !handoff.acknowledgedAt)) setReportOpen(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [chatId]);
+
+  // Handoff requested while this conversation is open, or its report got ready.
+  useEffect(() => {
+    function upsert({ handoff }: { handoff: HumanHandoff }) {
+      if (!chatId || handoff.chatId !== chatId) return;
+      setHandoffs((prev) => [handoff, ...prev.filter((item) => item.id !== handoff.id)]);
+      setReportOpen(true);
+    }
+
+    socket.on("handoff:requested", upsert);
+    socket.on("handoff:updated", upsert);
+    return () => {
+      socket.off("handoff:requested", upsert);
+      socket.off("handoff:updated", upsert);
+    };
+  }, [socket, chatId]);
+
+  // The attendant is looking at the conversation: its alert goes away.
+  useEffect(() => {
+    if (chatId && pendingChatIds.has(chatId)) acknowledge(chatId);
+  }, [chatId, pendingChatIds, acknowledge]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
@@ -171,133 +218,146 @@ export function ChatPanel({ chatId, contactLabel, onBack }: ChatPanelProps) {
   let lastDay = "";
 
   return (
-    <div className="flex h-full w-full min-w-0 flex-col">
-      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-border/70 px-4">
-        {onBack && (
-          <Button variant="ghost" size="icon" className="-ml-1 h-9 w-9 md:hidden" onClick={onBack} aria-label="Voltar">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        )}
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-          {initials(label)}
-        </span>
-        <div className="min-w-0">
-          <p className="truncate font-semibold">{label}</p>
-          <p className="truncate text-xs text-muted-foreground">{formatPhone(chatId.split("@")[0]) || chatId}</p>
-        </div>
-        {agentActive !== null && (
-          <Button
-            variant={agentActive ? "outline" : "default"}
-            size="sm"
-            className="ml-auto shrink-0 gap-2"
-            onClick={handleToggleAgent}
-            disabled={togglingAgent}
-            title={agentActive ? "O agente para de responder só este contato" : "O agente volta a responder este contato"}
-          >
-            {togglingAgent ? (
-              <Spinner className="size-4" />
-            ) : agentActive ? (
-              <Pause className="h-4 w-4" />
-            ) : (
-              <Play className="h-4 w-4" />
-            )}
-            <span className="hidden sm:inline">{agentActive ? "Pausar agente" : "Retomar agente"}</span>
-          </Button>
-        )}
-      </div>
-
-      {(agentActive === false || agentError) && (
-        <div
-          className={cn(
-            "flex shrink-0 items-center gap-2 border-b border-border/70 px-4 py-2 text-xs",
-            agentError ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground",
+    <div className="relative flex h-full w-full min-w-0">
+      <div className="flex h-full min-w-0 flex-1 flex-col">
+        <div className="flex h-16 shrink-0 items-center gap-3 border-b border-border/70 px-4">
+          {onBack && (
+            <Button variant="ghost" size="icon" className="-ml-1 h-9 w-9 md:hidden" onClick={onBack} aria-label="Voltar">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
           )}
-        >
-          <Bot className="h-4 w-4 shrink-0" />
-          {agentError ?? "Agente pausado neste contato: as respostas são manuais até você retomar."}
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+            {initials(label)}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate font-semibold">{label}</p>
+            <p className="truncate text-xs text-muted-foreground">{formatPhone(chatId.split("@")[0]) || chatId}</p>
+          </div>
+          {handoffs.length > 0 && (
+            <Button
+              variant={reportOpen ? "default" : "outline"}
+              size="sm"
+              className="ml-auto shrink-0 gap-2"
+              onClick={() => setReportOpen((open) => !open)}
+              aria-pressed={reportOpen}
+            >
+              <FileText className="h-4 w-4" />
+              <span className="hidden sm:inline">Relatório</span>
+            </Button>
+          )}
         </div>
-      )}
 
-      <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto bg-muted/40 px-4 py-5 sm:px-8">
-        {loading && (
-          <div className="flex flex-1 items-center justify-center">
-            <Spinner className="size-6 text-muted-foreground" />
+        {(agentActive === false || agentError) && (
+          <div
+            className={cn(
+              "flex shrink-0 items-center gap-2 border-b border-border/70 px-4 py-2 text-xs",
+              agentError ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground",
+            )}
+          >
+            <Bot className="h-4 w-4 shrink-0" />
+            {agentError ?? "Agente pausado neste contato: as respostas são manuais até você retomar."}
           </div>
         )}
-        {!loading && messages.length === 0 && (
-          <div className="flex flex-1 items-center justify-center">
-            <p className="rounded-full border bg-background px-4 py-1.5 text-sm text-muted-foreground">Nenhuma mensagem ainda.</p>
-          </div>
-        )}
-        {messages.map((message) => {
-          const date = new Date(message.timestamp);
-          const day = date.toDateString();
-          const separator = day !== lastDay ? dayLabel(date) : null;
-          lastDay = day;
-          return (
-            <div key={message.id} className="contents">
-              {separator && (
-                <div className="my-3 flex justify-center">
-                  <span className="rounded-full border bg-background px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-soft">
-                    {separator}
-                  </span>
-                </div>
-              )}
-              <div
-                className={cn(
-                  "w-fit min-w-0 max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow-[0_1px_1px_oklch(0%_0_0/0.06)]",
-                  message.fromMe
-                    ? "ml-auto rounded-br-md bg-primary text-primary-foreground"
-                    : "rounded-bl-md border border-border/70 bg-background",
-                )}
-              >
-                {message.type !== "chat" && (
-                  <ChatMessageMedia
-                    chatId={chatId}
-                    wppId={message.wppId}
-                    type={message.type}
-                    filename={message.filename}
-                  />
-                )}
-                {(message.body ?? message.caption) && (
-                  <p className={cn("min-w-0 whitespace-pre-wrap break-words", message.type !== "chat" && "mt-1")}>
-                    {message.body ?? message.caption}
-                  </p>
-                )}
-                <p
-                  className={cn(
-                    "mt-0.5 text-right text-[10px] tabular-nums",
-                    message.fromMe ? "text-primary-foreground/60" : "text-muted-foreground",
-                  )}
-                  title={date.toLocaleString("pt-BR")}
-                >
-                  {TIME.format(date)}
-                </p>
-              </div>
+
+        <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto bg-muted/40 px-4 py-5 sm:px-8">
+          {loading && (
+            <div className="flex flex-1 items-center justify-center">
+              <Spinner className="size-6 text-muted-foreground" />
             </div>
-          );
-        })}
-        <div ref={bottomRef} />
-      </div>
+          )}
+          {!loading && messages.length === 0 && (
+            <div className="flex flex-1 items-center justify-center">
+              <p className="rounded-full border bg-background px-4 py-1.5 text-sm text-muted-foreground">Nenhuma mensagem ainda.</p>
+            </div>
+          )}
+          {messages.map((message) => {
+            const date = new Date(message.timestamp);
+            const day = date.toDateString();
+            const separator = day !== lastDay ? dayLabel(date) : null;
+            lastDay = day;
+            return (
+              <div key={message.id} className="contents">
+                {separator && (
+                  <div className="my-3 flex justify-center">
+                    <span className="rounded-full border bg-background px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-soft">
+                      {separator}
+                    </span>
+                  </div>
+                )}
+                <div
+                  className={cn(
+                    "w-fit min-w-0 max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow-[0_1px_1px_oklch(0%_0_0/0.06)]",
+                    message.fromMe
+                      ? "ml-auto rounded-br-md bg-primary text-primary-foreground"
+                      : "rounded-bl-md border border-border/70 bg-background",
+                  )}
+                >
+                  {message.type !== "chat" && (
+                    <ChatMessageMedia
+                      chatId={chatId}
+                      wppId={message.wppId}
+                      type={message.type}
+                      filename={message.filename}
+                    />
+                  )}
+                  {(message.body ?? message.caption) && (
+                    <p className={cn("min-w-0 whitespace-pre-wrap break-words", message.type !== "chat" && "mt-1")}>
+                      {message.body ?? message.caption}
+                    </p>
+                  )}
+                  <p
+                    className={cn(
+                      "mt-0.5 text-right text-[10px] tabular-nums",
+                      message.fromMe ? "text-primary-foreground/60" : "text-muted-foreground",
+                    )}
+                    title={date.toLocaleString("pt-BR")}
+                  >
+                    {TIME.format(date)}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={bottomRef} />
+        </div>
 
-      <form onSubmit={handleSend} className="flex shrink-0 items-center gap-2 border-t border-border/70 p-3">
-        <Input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Digite uma mensagem..."
-          disabled={sending}
-          className="h-11 rounded-full bg-muted/40 px-5"
-        />
-        <Button
-          type="submit"
-          size="icon"
-          className="h-11 w-11 shrink-0 rounded-full"
-          disabled={sending || !text.trim()}
-          aria-label="Enviar"
-        >
-          <SendHorizontal className="h-4 w-4" />
-        </Button>
-      </form>
+        <form onSubmit={handleSend} className="flex shrink-0 items-center gap-2 border-t border-border/70 p-3">
+          {agentActive !== null && (
+            <label
+              className="flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-full border border-border/70 px-3 text-xs font-medium"
+              title={agentActive ? "O agente para de responder só este contato" : "O agente volta a responder este contato"}
+            >
+              {togglingAgent ? <Spinner className="size-4" /> : <Bot className="h-4 w-4 text-muted-foreground" />}
+              <span className="hidden sm:inline">{agentActive ? "Agente ligado" : "Agente pausado"}</span>
+              <Switch
+                checked={agentActive}
+                onCheckedChange={handleToggleAgent}
+                disabled={togglingAgent}
+                aria-label="Agente respondendo este contato"
+              />
+            </label>
+          )}
+          <Input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Digite uma mensagem..."
+            disabled={sending}
+            className="h-11 rounded-full bg-muted/40 px-5"
+          />
+          <Button
+            type="submit"
+            size="icon"
+            className="h-11 w-11 shrink-0 rounded-full"
+            disabled={sending || !text.trim()}
+            aria-label="Enviar"
+          >
+            <SendHorizontal className="h-4 w-4" />
+          </Button>
+        </form>
+      </div>
+      {reportOpen && handoffs.length > 0 && (
+        <HandoffReportPanel handoffs={handoffs} onClose={() => setReportOpen(false)} />
+      )}
     </div>
   );
 }

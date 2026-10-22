@@ -5,6 +5,9 @@ import { prisma } from "../lib/prisma";
 import {
   whatsappEvents,
   type AgentDocumentStatusEvent,
+  type HandoffAcknowledgedEvent,
+  type HandoffRequestedEvent,
+  type HandoffUpdatedEvent,
   type OrganizationEvent,
   type WhatsappContactUpdatedEvent,
   type WhatsappMessageAckEvent,
@@ -51,12 +54,26 @@ export function setupSockets(io: Server) {
   });
 
   // Sent and received messages; chats/contact lists reload on this.
-  whatsappEvents.on("message", ({ organizationId, chatId, message, contact }: WhatsappMessageEvent) => {
+  whatsappEvents.on("message", ({ organizationId, chatId, message, contact, agentAnswering }: WhatsappMessageEvent) => {
     io.to(orgRoom(organizationId)).emit("whatsapp:message", {
       chatId,
       message: toChatMessage(message),
       contact,
+      agentAnswering,
     });
+  });
+
+  // Human handoff: alert (sound + badge), report ready, alert cleared.
+  whatsappEvents.on("handoff-requested", ({ organizationId, handoff, contact }: HandoffRequestedEvent) => {
+    io.to(orgRoom(organizationId)).emit("handoff:requested", { handoff, contact });
+  });
+
+  whatsappEvents.on("handoff-updated", ({ organizationId, handoff }: HandoffUpdatedEvent) => {
+    io.to(orgRoom(organizationId)).emit("handoff:updated", { handoff });
+  });
+
+  whatsappEvents.on("handoff-acknowledged", ({ organizationId, chatId }: HandoffAcknowledgedEvent) => {
+    io.to(orgRoom(organizationId)).emit("handoff:acknowledged", { chatId });
   });
 
   whatsappEvents.on("message-ack", ({ organizationId, ...ack }: WhatsappMessageAckEvent) => {
