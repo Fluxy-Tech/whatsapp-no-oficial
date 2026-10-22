@@ -255,6 +255,32 @@ export async function setCampaignActive(organizationId: string, id: string, acti
   return getCampaign(organizationId, id);
 }
 
+/**
+ * Moves the start of a campaign that hasn't started yet (scheduled time still
+ * ahead, nothing sent). The worker only picks it when nextBatchAt arrives, so
+ * the update is conditional: if the start arrived meanwhile, nothing changes.
+ */
+export async function rescheduleCampaign(organizationId: string, id: string, scheduledAt: Date) {
+  const campaign = await findCampaign(organizationId, id);
+  const now = new Date();
+  if (
+    campaign.status !== "PROCESSING" ||
+    campaign.totalContacts > 0 ||
+    !campaign.scheduledAt ||
+    campaign.scheduledAt <= now
+  ) {
+    throw new CampaignError(400, "Só dá para editar o agendamento antes de o disparo começar.");
+  }
+  if (scheduledAt <= now) throw new CampaignError(400, "O novo horário precisa ser futuro.");
+
+  const { count } = await prisma.campaign.updateMany({
+    where: { id: campaign.id, status: "PROCESSING", totalContacts: 0, scheduledAt: { gt: now } },
+    data: { scheduledAt, nextBatchAt: scheduledAt },
+  });
+  if (count === 0) throw new CampaignError(409, "O disparo já começou; o agendamento não pode mais ser alterado.");
+  return getCampaign(organizationId, id);
+}
+
 /** WhatsApp disconnected: every running campaign of the organization is paused. */
 export async function pauseCampaignsOnDisconnect(organizationId: string, sessionStatus: string) {
   if (!DISCONNECTED_STATUSES.has(sessionStatus)) return;

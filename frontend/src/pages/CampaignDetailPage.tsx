@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Calendar,
+  CalendarClock,
   CircleAlert,
   ClipboardList,
   FileText,
@@ -31,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { usePermission } from "@/providers/OrganizationProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatTile } from "@/components/ui/stat-tile";
@@ -42,6 +44,12 @@ const DATE_TIME = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeSty
 const SENT_STATUSES = ["SENT", "DELIVERED", "READ"];
 
 type TargetTab = "contacts" | "sent" | "failures" | "responses";
+
+/** Date -> value of <input type="datetime-local"> (local time, no time zone). */
+function toLocalInput(date: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 const TARGET_TABS: TabItem<TargetTab>[] = [
   { id: "contacts", label: "Contatos", icon: Users },
@@ -133,6 +141,42 @@ function DispatchControl({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const completed = campaign.status === "COMPLETED";
+  // The start can be moved while the scheduled time hasn't arrived and nothing was sent.
+  const canReschedule =
+    canEdit &&
+    !completed &&
+    campaign.totalContacts === 0 &&
+    !!campaign.scheduledAt &&
+    new Date(campaign.scheduledAt).getTime() > Date.now();
+  const [editingSchedule, setEditingSchedule] = useState(false);
+  const [scheduleValue, setScheduleValue] = useState("");
+  const scheduleDate = scheduleValue ? new Date(scheduleValue) : null;
+  const scheduleValid = scheduleDate !== null && scheduleDate.getTime() > Date.now();
+
+  function startEditingSchedule() {
+    setError(null);
+    setScheduleValue(campaign.scheduledAt ? toLocalInput(new Date(campaign.scheduledAt)) : "");
+    setEditingSchedule(true);
+  }
+
+  async function saveSchedule() {
+    if (!scheduleDate || !scheduleValid) return;
+    setSaving(true);
+    setError(null);
+    try {
+      onUpdated(
+        await api<CampaignDetail>(`/api/campaigns/${campaign.id}/schedule`, {
+          method: "PATCH",
+          body: JSON.stringify({ scheduledAt: scheduleDate.toISOString() }),
+        }),
+      );
+      setEditingSchedule(false);
+    } catch (err) {
+      setError((err as Error).message || "Não foi possível alterar o agendamento.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function toggleActive() {
     setSaving(true);
@@ -184,16 +228,24 @@ function DispatchControl({
             </div>
           </div>
           {canEdit && !completed && (
-            <Button
-              type="button"
-              variant={campaign.active ? "outline" : "default"}
-              disabled={saving}
-              onClick={() => void toggleActive()}
-              className="gap-2"
-            >
-              {campaign.active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              {campaign.active ? "Pausar" : "Retomar"}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {canReschedule && !editingSchedule && (
+                <Button type="button" variant="outline" disabled={saving} onClick={startEditingSchedule} className="gap-2">
+                  <CalendarClock className="h-4 w-4" />
+                  Editar agendamento
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant={campaign.active ? "outline" : "default"}
+                disabled={saving}
+                onClick={() => void toggleActive()}
+                className="gap-2"
+              >
+                {campaign.active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                {campaign.active ? "Pausar" : "Retomar"}
+              </Button>
+            </div>
           )}
         </div>
       </CardHeader>
@@ -207,6 +259,32 @@ function DispatchControl({
             <Button variant="link" className="h-auto p-0 text-sm" onClick={() => navigate("/dashboard/configuracoes")}>
               Ir para a conexão
             </Button>
+          </div>
+        )}
+        {editingSchedule && canReschedule && (
+          <div className="flex flex-col gap-2 rounded-lg border border-dashed p-3">
+            <label htmlFor="campaign-reschedule" className="text-sm font-medium">
+              Novo início do disparo
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                id="campaign-reschedule"
+                type="datetime-local"
+                className="w-fit"
+                min={toLocalInput(new Date())}
+                value={scheduleValue}
+                onChange={(e) => setScheduleValue(e.target.value)}
+              />
+              <Button type="button" disabled={saving || !scheduleValid} onClick={() => void saveSchedule()}>
+                {saving ? "Salvando..." : "Salvar"}
+              </Button>
+              <Button type="button" variant="ghost" disabled={saving} onClick={() => setEditingSchedule(false)}>
+                Cancelar
+              </Button>
+            </div>
+            {scheduleValue && !scheduleValid && (
+              <p className="text-xs text-destructive">Escolha uma data e horário no futuro.</p>
+            )}
           </div>
         )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">

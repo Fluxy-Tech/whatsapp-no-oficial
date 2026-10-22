@@ -9,6 +9,7 @@ import {
   getCampaignStats,
   listBlockedContacts,
   listCampaigns,
+  rescheduleCampaign,
   setCampaignActive,
   unblockContact,
   updateCampaignSettings,
@@ -128,6 +129,12 @@ router.patch("/:id/active", canEdit, async (req, res) => {
   const active = (req.body ?? {}).active;
   if (typeof active !== "boolean") throw new CampaignError(400, "active must be a boolean");
   res.json(await setCampaignActive(orgId(req), param(req, "id"), active));
+});
+
+router.patch("/:id/schedule", canEdit, async (req, res) => {
+  const scheduledAt = parseDate((req.body ?? {}).scheduledAt);
+  if (!scheduledAt) throw new CampaignError(400, "Informe a data e o horário do disparo.");
+  res.json(await rescheduleCampaign(orgId(req), param(req, "id"), scheduledAt));
 });
 
 router.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
