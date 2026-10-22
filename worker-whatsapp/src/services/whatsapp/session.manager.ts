@@ -180,7 +180,9 @@ export async function sweepUnreadMessages(organizationId: string): Promise<Unrea
           for (const msg of msgs) {
             if (msg.id?.fromMe) continue;
             const serialized = WAPI.processMessageObj(msg, true, false);
-            if (serialized) messages.push(serialized);
+            if (!serialized) continue;
+            serialized.id ??= msg.id?.toString();
+            messages.push(serialized);
           }
         }
         return { chats, messages };
@@ -216,9 +218,70 @@ export async function sweepUnreadMessages(organizationId: string): Promise<Unrea
   }
 }
 
+// O WhatsApp Web passou a entregar o id da mensagem (MsgKey) sem a
+// propriedade _serialized, que é o que o wppconnect lê ao montar a mensagem:
+// ela chegava com id vazio e era descartada. Embrulhamos a função dele na
+// página para preencher id/from/to/chatId pelo toString() quando faltarem.
+// Idempotente; reaplicada quando a página recarrega (vigia da conexão).
+async function patchMessageSerializer(organizationId: string, client: Whatsapp) {
+  try {
+    await withTimeout(
+      client.page.evaluate(() => {
+        const { WAPI } = globalThis as any;
+        const original = WAPI?._serializeMessageObj;
+        if (typeof original !== "function" || original.fluxyPatched) return;
+
+        const widOf = (value: any) =>
+          value ? (value._serialized ?? (typeof value === "string" ? value : value.toString?.())) : undefined;
+        const patched = (msg: any) => {
+          const serialized = original(msg);
+          if (serialized && msg?.id) {
+            serialized.id ??= widOf(msg.id);
+            serialized.from ??= widOf(msg.from);
+            serialized.to ??= widOf(msg.to);
+            serialized.fromMe ??= msg.id.fromMe;
+            if (typeof serialized.chatId !== "string") serialized.chatId = widOf(msg.id.remote) ?? serialized.chatId;
+          }
+          return serialized;
+        };
+        patched.fluxyPatched = true;
+        WAPI._serializeMessageObj = patched;
+      }),
+      HEALTH_CHECK_TIMEOUT_MS,
+    );
+  } catch (error) {
+    logger.warn(`[${organizationId}] não foi possível corrigir a leitura das mensagens na página`, error);
+  }
+}
+
+/** Mensagem que chegou sem id: procura a mesma (horário, tipo e texto) na conversa. */
+async function recoverMessageId(client: Whatsapp, plain: Record<string, any>): Promise<string | null> {
+  const chatId = plain.fromMe ? plain.to : plain.from;
+  if (typeof chatId !== "string" || !plain.t) return null;
+  return withTimeout(
+    client.page.evaluate(
+      async ({ chatId, t, type, body }) => {
+        const { WPP } = globalThis as any;
+        const msgs: any[] = await WPP.chat.getMessages(chatId, { count: 20 }).catch(() => []);
+        const found = msgs.reverse().find((msg) => msg.t === t && msg.type === type && (msg.body ?? null) === body);
+        return found?.id ? (found.id._serialized ?? found.id.toString()) : null;
+      },
+      { chatId, t: plain.t, type: plain.type, body: plain.body ?? null },
+    ),
+    HEALTH_CHECK_TIMEOUT_MS,
+  ).catch(() => null);
+}
+
 function attachListeners(organizationId: string, client: Whatsapp) {
-  client.onAnyMessage((message) => {
+  client.onAnyMessage(async (message) => {
     const plain = toPlainMessage(message);
+    if (typeof plain.id !== "string") {
+      // Correção da página ainda não aplicada (ex.: logo depois de recarregar):
+      // reaplica e procura o id na conversa para não perder a mensagem.
+      await patchMessageSerializer(organizationId, client);
+      const id = await recoverMessageId(client, plain);
+      if (id) plain.id = id;
+    }
     if (plain.type === "ciphertext" && typeof plain.id === "string" && !plain.isGroupMsg) {
       waitForDecryption(organizationId, client, plain.id);
       return;
@@ -404,6 +467,8 @@ async function checkHealth(organizationId: string, client: Whatsapp) {
     if (getClient(organizationId) !== client) return;
 
     if (state === "CONNECTED") {
+      // A página pode ter recarregado (useHere, atualização do WhatsApp Web).
+      await patchMessageSerializer(organizationId, client);
       if (entry.unhealthy > 0) logger.info(`[${organizationId}] conexão normalizada`);
       entry.unhealthy = 0;
       // Conectado de forma estável: zera o contador de reinícios.
@@ -510,6 +575,7 @@ async function createClient(organizationId: string): Promise<Whatsapp> {
   });
 
   clients.set(organizationId, client);
+  await patchMessageSerializer(organizationId, client);
   attachListeners(organizationId, client);
 
   const hostDevice = await client.getHostDevice().catch(() => null);
