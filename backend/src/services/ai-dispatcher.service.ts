@@ -195,6 +195,7 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
         resetMessage: agent.resetMessage,
         numberPhoneNotification: agent.numberPhoneNotification,
         descriptionNotification: agent.descriptionNotification,
+        historyMessages: agent.historyMessages,
         rgbs: {
           enabled: agent.rgbsEnabled,
           timeSmall: agent.timeSmall,

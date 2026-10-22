@@ -78,6 +78,8 @@ export type AgentInput = {
   metadados?: MetadadoInput[];
   /** Special "Nome" metadado: ask for the contact's name when it has none. */
   requireContactName?: boolean;
+  /** Previous messages sent to the model with the current one; 0 = no limit. */
+  historyMessages?: unknown;
   /** Messages that reset the conversation when sent alone (full list). */
   resetKeywords?: string[];
   /** Sent when a reset keyword ends the conversation; empty = default phrase. */
@@ -116,6 +118,16 @@ function phoneNotificationOf(value: string | null | undefined) {
     throw new AgentError(400, "Número de notificação inválido. Use DDI + DDD + número, ex.: 5511999999999");
   }
   return digits;
+}
+
+export const MAX_HISTORY_MESSAGES = 100;
+
+function historyMessagesOf(value: unknown) {
+  const messages = Number(value);
+  if (!Number.isInteger(messages) || messages < 0 || messages > MAX_HISTORY_MESSAGES) {
+    throw new AgentError(400, `A janela de histórico deve ser um número inteiro entre 0 e ${MAX_HISTORY_MESSAGES}`);
+  }
+  return messages;
 }
 
 /** "Iris" -> "iris". Must match NAME_QUEUE in the worker's .env. */
@@ -161,6 +173,7 @@ export function agentView(agent: AgentWithMetadados, activeAgentId: string | nul
     },
     leadOnFirstMessage: agent.leadOnFirstMessage,
     requireContactName: agent.requireContactName,
+    historyMessages: agent.historyMessages,
     leadStageId: agent.leadStageId,
     completedStageId: agent.completedStageId,
     leadAssigneeId: agent.leadAssigneeId,
@@ -417,6 +430,7 @@ export async function createAgent(organizationId: string, input: AgentInput) {
       ...rgbsData(input.rgbs),
       leadOnFirstMessage: input.leadOnFirstMessage ?? false,
       requireContactName: input.requireContactName ?? false,
+      ...(input.historyMessages !== undefined && { historyMessages: historyMessagesOf(input.historyMessages) }),
       leadStageId: input.leadStageId ?? null,
       completedStageId: input.completedStageId ?? null,
       leadAssigneeId: input.leadAssigneeId ?? null,
@@ -464,6 +478,7 @@ export async function updateAgent(organizationId: string, agentId: string, input
   Object.assign(data, rgbsData(input.rgbs));
   if (input.leadOnFirstMessage !== undefined) data.leadOnFirstMessage = input.leadOnFirstMessage;
   if (input.requireContactName !== undefined) data.requireContactName = input.requireContactName;
+  if (input.historyMessages !== undefined) data.historyMessages = historyMessagesOf(input.historyMessages);
   await validateStageIds(organizationId, [
     input.leadStageId,
     input.completedStageId,

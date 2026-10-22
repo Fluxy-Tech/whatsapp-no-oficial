@@ -3,7 +3,8 @@ Limite do histórico enviado ao modelo.
 
 A sessão do ADK guarda a conversa inteira, e o ADK manda todos os eventos dela
 para o Gemini a cada resposta. Este callback (before_model_callback) corta o
-que vai para o modelo: ficam só as últimas AI_HISTORY_MESSAGES mensagens antes
+que vai para o modelo: ficam só as últimas N mensagens antes (N = janela de
+histórico do agente, historyMessages; sem ela, AI_HISTORY_MESSAGES do .env)
 da mensagem atual do contato, mais o turno atual completo (mensagem do contato,
 chamadas de tools e respostas). A sessão salva não é alterada.
 
@@ -92,7 +93,18 @@ def eventos_externos(campanhas: list[dict], manuais: list[dict], sessao, autor: 
     return eventos
 
 
-def limitar_historico(callback_context, llm_request):
+def limite_do_agente(agent_info: dict) -> int:
+    """Janela de histórico do agente (historyMessages, configurada no painel);
+    sem ela, AI_HISTORY_MESSAGES do .env. 0 = sem limite."""
+    valor = agent_info.get("historyMessages")
+    return max(0, int(valor)) if valor is not None else config.AI_HISTORY_MESSAGES
+
+
+def limitar_historico(limite: int):
     """before_model_callback do agente: só ajusta o request, não responde."""
-    llm_request.contents = limitar_contents(llm_request.contents, config.AI_HISTORY_MESSAGES)
-    return None
+
+    def callback(callback_context, llm_request):
+        llm_request.contents = limitar_contents(llm_request.contents, limite)
+        return None
+
+    return callback

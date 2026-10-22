@@ -351,6 +351,10 @@ model Agent {
   // counts) and what it collects is saved in Target.name, not in extras.
   requireContactName      Boolean      @default(false)
 
+  // History window: how many previous messages (contact + agent) go to the
+  // model with the current one. The session keeps everything. 0 = no limit.
+  historyMessages         Int          @default(4)
+
   // Kanban automation. A stage implies its pipeline (esteira).
   // leadOnFirstMessage: creates the lead card in leadStage on the contact's first message.
   leadOnFirstMessage Boolean        @default(false)

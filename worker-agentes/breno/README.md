@@ -59,7 +59,7 @@ O núcleo não precisa mudar.
 
 - Ficam no Postgres de `URL_SESSIONS`, nas tabelas `breno_sessions` e `breno_session_messages` (criadas na subida do worker). Cada mensagem do LangChain (contato, agente, chamadas e respostas de ferramentas) é uma linha, em ordem.
 - Sem mensagens por `AI_SESSION_TTL_HOURS` (24h), começa uma sessão nova. Os metadados já coletados continuam no prompt.
-- Para o modelo vão só as `AI_HISTORY_MESSAGES` (4) mensagens anteriores + o turno atual. O corte nunca separa uma ferramenta da resposta dela. A sessão guarda tudo.
+- Para o modelo vão só as mensagens anteriores da janela de histórico do agente (`historyMessages`, configurada no painel; sem ela, `AI_HISTORY_MESSAGES` do .env, 4) + o turno atual. O corte nunca separa uma ferramenta da resposta dela. A sessão guarda tudo.
 - O reset apaga as sessões e os extras do contato.
 
 ## Tokens e custo

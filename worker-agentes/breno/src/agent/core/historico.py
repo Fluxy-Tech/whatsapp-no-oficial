@@ -1,8 +1,9 @@
 """
 Histórico enviado ao modelo.
 
-A sessão guarda a conversa inteira; para o modelo vão só as últimas
-AI_HISTORY_MESSAGES mensagens antes da mensagem atual do contato, mais o turno
+A sessão guarda a conversa inteira; para o modelo vão só as últimas N
+mensagens antes da mensagem atual do contato (N = janela de histórico do
+agente, historyMessages; sem ela, AI_HISTORY_MESSAGES do .env), mais o turno
 atual completo (mensagem do contato, chamadas de ferramentas e respostas).
 
 "Mensagem" = um conteúdo com texto, do contato ou do agente. Chamadas de
@@ -12,6 +13,8 @@ ferramenta sem a chamada que a originou (a OpenAI recusa a requisição).
 """
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+
+from src import config
 
 # ids das mensagens na sessão (evitam gravá-las duas vezes se o job voltar).
 _PREFIXO_CAMPANHA = "campanha-"
@@ -24,6 +27,13 @@ def texto_da_mensagem(mensagem: BaseMessage) -> str:
 
 def _e_mensagem_de_texto(mensagem: BaseMessage) -> bool:
     return isinstance(mensagem, (HumanMessage, AIMessage)) and bool(texto_da_mensagem(mensagem))
+
+
+def limite_do_agente(agent_info: dict) -> int:
+    """Janela de histórico do agente (historyMessages, configurada no painel);
+    sem ela, AI_HISTORY_MESSAGES do .env. 0 = sem limite."""
+    valor = agent_info.get("historyMessages")
+    return max(0, int(valor)) if valor is not None else config.AI_HISTORY_MESSAGES
 
 
 def limitar_historico(mensagens: list[BaseMessage], limite: int) -> list[BaseMessage]:

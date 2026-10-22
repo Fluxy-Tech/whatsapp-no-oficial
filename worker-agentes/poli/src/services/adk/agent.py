@@ -23,7 +23,7 @@ from google.adk.models import Gemini
 from src import config
 from src.services.adk.infos import AGENT_TIMEZONE, GOOGLE_ADK_MODEL, QUEBRA_MENSAGEM
 from src.services.tokens import UsoTokens
-from src.services.adk.historico import limitar_historico
+from src.services.adk.historico import limitar_historico, limite_do_agente
 from src.services.adk.tools import (
     build_agendamento,
     build_consultar_conhecimento,
@@ -281,5 +281,5 @@ def build_agent(agent_info: dict, contact: dict | None = None, uso: UsoTokens | 
         # como variável de state e quebraria.
         instruction=lambda _ctx: instruction,
         tools=tools,
-        before_model_callback=limitar_historico,
+        before_model_callback=limitar_historico(limite_do_agente(agent_info)),
     )

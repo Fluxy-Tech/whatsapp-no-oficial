@@ -39,6 +39,7 @@ type Form = {
   tokenJev: TokenDraft;
   metadados: MetadadoDraft[];
   requireContactName: boolean;
+  historyMessages: string;
   resetKeywords: string[];
   resetMessage: string;
   numberPhoneNotification: string;
@@ -73,6 +74,7 @@ function toForm(agent: Agent | null): Form {
       imageRules: m.imageRules,
     })),
     requireContactName: agent?.requireContactName ?? false,
+    historyMessages: String(agent?.historyMessages ?? 4),
     resetKeywords: agent?.resetKeywords ?? [],
     resetMessage: agent?.resetMessage ?? DEFAULT_RESET_MESSAGE,
     numberPhoneNotification: agent?.numberPhoneNotification ?? "",
@@ -223,6 +225,7 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
           imageRules: kind === "image" ? imageRules : [],
         })),
         requireContactName: form.requireContactName,
+        historyMessages: Number(form.historyMessages),
         resetKeywords: form.resetKeywords,
         resetMessage: form.resetMessage,
         numberPhoneNotification: form.numberPhoneNotification.trim() || null,
@@ -375,6 +378,30 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
                     disabled={disabled}
                   />
                   <p className="text-xs text-muted-foreground">Sem prompt o agente não responde.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="agent-history-messages">Janela de histórico</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="agent-history-messages"
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={form.historyMessages}
+                      onChange={(e) => setForm({ ...form, historyMessages: e.target.value })}
+                      required
+                      disabled={disabled}
+                      className="w-24"
+                    />
+                    <span className="text-sm text-muted-foreground">mensagens anteriores</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Quantas mensagens anteriores (do contato e do agente, incluindo campanhas e conversa manual) vão para
+                    o modelo junto com a mensagem atual. A conversa inteira continua salva. 0 = sem limite.
+                  </p>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">

@@ -21,7 +21,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from src import config
-from src.agent.core.historico import limitar_historico
+from src.agent.core.historico import limitar_historico, limite_do_agente
 from src.agent.core.llm import modelo_do_agente
 from src.agent.core.turno import Turno
 
@@ -34,11 +34,12 @@ class EstadoConversa(TypedDict):
 def construir_grafo(turno: Turno, prompt_sistema: str, ferramentas: list[BaseTool]):
     modelo = modelo_do_agente(turno)
     modelo_com_ferramentas = modelo.bind_tools(ferramentas) if ferramentas else modelo
+    limite = limite_do_agente(turno.agent)
 
     def agente(estado: EstadoConversa) -> dict:
         entrada = [
             SystemMessage(content=prompt_sistema),
-            *limitar_historico(estado["messages"], config.AI_HISTORY_MESSAGES),
+            *limitar_historico(estado["messages"], limite),
         ]
         resposta = modelo_com_ferramentas.invoke(entrada)
         # Cada chamada ao modelo (inclusive as que só pedem ferramentas) traz o seu uso.

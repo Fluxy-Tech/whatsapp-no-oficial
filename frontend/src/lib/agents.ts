@@ -84,6 +84,8 @@ export type Agent = {
   rgbs: AgentRgbs;
   /** Special "Nome" metadado: asks for the contact's name when it has none (saved as the contact's name). */
   requireContactName: boolean;
+  /** History window: previous messages (contact + agent) sent to the model with the current one; 0 = no limit. */
+  historyMessages: number;
   /** Kanban: create the lead on the first message, in leadStageId. */
   leadOnFirstMessage: boolean;
   leadStageId: string | null;
