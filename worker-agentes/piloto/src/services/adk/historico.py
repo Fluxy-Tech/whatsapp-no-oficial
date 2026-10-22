@@ -11,8 +11,9 @@ chamadas de tools e respostas). A sessão salva não é alterada.
 de turnos anteriores só ficam se estiverem dentro da janela, e o corte sempre
 cai numa mensagem de texto, então nunca separa uma chamada da sua resposta.
 
-As campanhas enviadas ao contato entram na sessão como eventos do agente
-(eventos_de_campanha), antes do turno em que o contato responde.
+As campanhas enviadas ao contato e a conversa manual (trocada enquanto o
+agente estava pausado para o contato) entram na sessão antes do turno em que o
+contato responde (eventos_externos).
 """
 
 from google.adk.events import Event
@@ -25,8 +26,9 @@ _INICIO_OMITIDO = types.Content(role="user", parts=[types.Part(text="(mensagens 
 # Conversa que começa por uma campanha (mensagem do agente).
 _INICIO_PELA_EMPRESA = types.Content(role="user", parts=[types.Part(text="(conversa iniciada pela empresa)")])
 
-# id do evento de campanha na sessão (evita gravá-lo duas vezes se o job voltar).
+# ids dos eventos na sessão (evitam gravá-los duas vezes se o job voltar).
 _PREFIXO_CAMPANHA = "campanha-"
+_PREFIXO_MANUAL = "manual-"
 
 
 def _tem_texto(content: types.Content) -> bool:
@@ -64,18 +66,29 @@ def limitar_contents(contents: list[types.Content], limite: int) -> list[types.C
     return cortado
 
 
-def eventos_de_campanha(campanhas: list[dict], sessao, autor: str) -> list[Event]:
-    """Campanhas enviadas ao contato viram eventos do agente (`autor` = nome do
-    agente, para o ADK mandar como fala do modelo), na ordem de envio: o agente
-    sabe o que o contato está respondendo. As que já estão na sessão ficam de fora."""
+def eventos_externos(campanhas: list[dict], manuais: list[dict], sessao, autor: str) -> list[Event]:
+    """Mensagens que o agente não gerou, em ordem cronológica:
+    - campanhas (campaignMessages) viram falas do agente (`autor` = nome do
+      agente, para o ADK mandar como fala do modelo): ele sabe o que o contato
+      está respondendo;
+    - a conversa manual (manualMessages): o que o atendente mandou vira fala do
+      agente e o que o contato mandou, fala do contato. Assim, ao ser retomado,
+      o agente continua de onde o atendente parou.
+    As que já estão na sessão ficam de fora."""
     na_sessao = {event.id for event in (sessao.events if sessao else None) or []}
+    itens = [
+        (campanha.get("sentAt") or "", f"{_PREFIXO_CAMPANHA}{campanha.get('id')}", True, campanha.get("text"))
+        for campanha in campanhas
+    ] + [
+        (manual.get("timestamp") or "", f"{_PREFIXO_MANUAL}{manual.get('id')}", bool(manual.get("fromMe")), manual.get("text"))
+        for manual in manuais
+    ]
     eventos = []
-    for campanha in campanhas:
-        texto = (campanha.get("text") or "").strip()
-        id_evento = f"{_PREFIXO_CAMPANHA}{campanha.get('id')}"
+    for _, id_evento, da_empresa, texto in sorted(itens, key=lambda item: item[0]):
+        texto = (texto or "").strip()
         if texto and id_evento not in na_sessao:
-            conteudo = types.Content(role="model", parts=[types.Part(text=texto)])
-            eventos.append(Event(id=id_evento, author=autor, content=conteudo))
+            conteudo = types.Content(role="model" if da_empresa else "user", parts=[types.Part(text=texto)])
+            eventos.append(Event(id=id_evento, author=autor if da_empresa else "user", content=conteudo))
     return eventos
 
 

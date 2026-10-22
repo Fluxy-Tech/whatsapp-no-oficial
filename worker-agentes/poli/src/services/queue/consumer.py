@@ -15,12 +15,15 @@ manda mensagem e a organização tem um agente ativo com context):
   "contact": {"id", "chatId", "number", "name", "extras": {nome: valor}},
   "messages": [{"messageId", "type", "text", "timestamp",
                 "media": {"bucket", "key", "mimetype", "link"} | null}],
-  "campaignMessages": [{"id", "campaign", "text", "sentAt"}]
+  "campaignMessages": [{"id", "campaign", "text", "sentAt"}],
+  "manualMessages": [{"id", "fromMe", "text", "timestamp"}]
 }
 
 campaignMessages: campanhas enviadas ao contato que o agente ainda não viu.
 Entram na sessão como falas do agente antes do turno (ver
-src/services/adk/historico.py: eventos_de_campanha).
+src/services/adk/historico.py: eventos_externos).
+manualMessages: conversa manual trocada enquanto o agente estava pausado para
+o contato (do atendente = fala do agente; do contato = fala do contato).
 
 As imagens (type "image" com media) são analisadas pelo JEV antes do ADK: a
 análise de tatuagem vai como texto logo depois da mensagem e fica no state da
@@ -232,6 +235,7 @@ def _responder(
         uso,
         anexos,
         campanhas=job.get("campaignMessages") or [],
+        manuais=job.get("manualMessages") or [],
     )
     _log(job, f"resposta: {resultado.texto[:200]!r} extras: {resultado.extras_coletados}")
 

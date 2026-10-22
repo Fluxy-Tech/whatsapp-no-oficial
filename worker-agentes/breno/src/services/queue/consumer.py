@@ -12,12 +12,15 @@ manda mensagem e a organização tem um agente ativo com context):
             "schedulingEnabled": bool, "meetingDurationMinutes": int},
   "contact": {"id", "chatId", "number", "name", "extras": {nome: valor}},
   "messages": [{"messageId", "type", "text", "timestamp"}],
-  "campaignMessages": [{"id", "campaign", "text", "sentAt"}]
+  "campaignMessages": [{"id", "campaign", "text", "sentAt"}],
+  "manualMessages": [{"id", "fromMe", "text", "timestamp"}]
 }
 
 campaignMessages: campanhas enviadas ao contato que o agente ainda não viu.
 Entram na sessão como mensagens do agente antes do turno (ver
-src/agent/core/historico.py: mensagens_de_campanha).
+src/agent/core/historico.py: mensagens_externas).
+manualMessages: conversa manual trocada enquanto o agente estava pausado para
+o contato (do atendente = mensagem do agente; do contato = mensagem do contato).
 
 Fluxo de uma resposta:
 1. reset (default): palavra de reset encerra a conversa sem chamar o modelo.
@@ -104,6 +107,7 @@ def handle_agent_reply(job: dict, publish_now) -> Reply:
         contact=contact,
         uso=UsoTokens(),
         campanhas=job.get("campaignMessages") or [],
+        manuais=job.get("manualMessages") or [],
     )
     try:
         return _responder(job, turno, pergunta, publish_now)

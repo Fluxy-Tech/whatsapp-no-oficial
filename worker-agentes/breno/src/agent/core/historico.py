@@ -13,8 +13,9 @@ ferramenta sem a chamada que a originou (a OpenAI recusa a requisição).
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
-# id da mensagem de campanha na sessão (evita gravá-la duas vezes se o job voltar).
+# ids das mensagens na sessão (evitam gravá-las duas vezes se o job voltar).
 _PREFIXO_CAMPANHA = "campanha-"
+_PREFIXO_MANUAL = "manual-"
 
 
 def texto_da_mensagem(mensagem: BaseMessage) -> str:
@@ -50,17 +51,31 @@ def limitar_historico(mensagens: list[BaseMessage], limite: int) -> list[BaseMes
     return cortado
 
 
-def mensagens_de_campanha(campanhas: list[dict], historico: list[BaseMessage]) -> list[AIMessage]:
-    """Campanhas enviadas ao contato viram mensagens do agente, na ordem de
-    envio: o agente sabe o que o contato está respondendo. As que já estão
-    no histórico ficam de fora."""
+def mensagens_externas(
+    campanhas: list[dict], manuais: list[dict], historico: list[BaseMessage]
+) -> list[AIMessage | HumanMessage]:
+    """Mensagens que o agente não gerou, em ordem cronológica:
+    - campanhas (campaignMessages) viram mensagens do agente: ele sabe o que o
+      contato está respondendo;
+    - a conversa manual (manualMessages, trocada enquanto o agente estava
+      pausado para o contato): o que o atendente mandou vira mensagem do agente
+      e o que o contato mandou, mensagem do contato. Assim, ao ser retomado, o
+      agente continua de onde o atendente parou.
+    As que já estão no histórico ficam de fora."""
     na_sessao = {mensagem.id for mensagem in historico if mensagem.id}
+    itens = [
+        (campanha.get("sentAt") or "", f"{_PREFIXO_CAMPANHA}{campanha.get('id')}", True, campanha.get("text"))
+        for campanha in campanhas
+    ] + [
+        (manual.get("timestamp") or "", f"{_PREFIXO_MANUAL}{manual.get('id')}", bool(manual.get("fromMe")), manual.get("text"))
+        for manual in manuais
+    ]
     novas = []
-    for campanha in campanhas:
-        texto = (campanha.get("text") or "").strip()
-        id_mensagem = f"{_PREFIXO_CAMPANHA}{campanha.get('id')}"
+    for _, id_mensagem, da_empresa, texto in sorted(itens, key=lambda item: item[0]):
+        texto = (texto or "").strip()
         if texto and id_mensagem not in na_sessao:
-            novas.append(AIMessage(content=texto, id=id_mensagem))
+            tipo = AIMessage if da_empresa else HumanMessage
+            novas.append(tipo(content=texto, id=id_mensagem))
     return novas
 
 

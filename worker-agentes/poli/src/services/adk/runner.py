@@ -8,7 +8,7 @@ from google.genai import types
 from src.config import AI_SESSION_TTL_HOURS
 from src.infra.adk.session_service import get_session_service
 from src.services.adk.agent import build_agent
-from src.services.adk.historico import eventos_de_campanha
+from src.services.adk.historico import eventos_externos
 from src.services.adk.infos import APP_NAME, GOOGLE_ADK_MODEL, QUEBRA_MENSAGEM, STATE_EXTRAS
 from src.services.tokens import UsoTokens
 
@@ -68,6 +68,7 @@ async def _executar(
     uso: UsoTokens | None,
     anexos: dict[str, list[dict]],
     campanhas: list[dict],
+    manuais: list[dict],
 ) -> ResultadoResposta:
     # Um contato = um usuário do ADK (id do contato no worker-whatsapp).
     user_id = contact["id"]
@@ -80,8 +81,8 @@ async def _executar(
         extras_antes = dict((antes.state if antes else {}).get(STATE_EXTRAS) or {})
 
         agente = build_agent(agent_info, contact, uso)
-        # Campanhas enviadas desde o último turno: gravadas já, ficam na sessão mesmo se o turno falhar.
-        for evento in eventos_de_campanha(campanhas, antes, agente.name):
+        # Campanhas e conversa manual desde o último turno: gravadas já, ficam na sessão mesmo se o turno falhar.
+        for evento in eventos_externos(campanhas, manuais, antes, agente.name):
             await session_service.append_event(antes, evento)
 
         runner = Runner(agent=agente, app_name=APP_NAME, session_service=session_service)
@@ -138,9 +139,11 @@ def gerar_resposta(
     uso: UsoTokens | None = None,
     anexos: dict[str, list[dict]] | None = None,
     campanhas: list[dict] | None = None,
+    manuais: list[dict] | None = None,
 ) -> ResultadoResposta:
     """`anexos`: {chave do state: itens deste turno}, somados às listas da sessão.
-    `campanhas`: campaignMessages do job, gravadas na sessão antes do turno."""
+    `campanhas` (campaignMessages) e `manuais` (manualMessages) do job: gravadas
+    na sessão antes do turno."""
     if not contact.get("id"):
         raise ValueError("Contato sem 'id' — não é possível abrir a sessão no ADK.")
-    return asyncio.run(_executar(pergunta, agent_info, contact, uso, anexos or {}, campanhas or []))
+    return asyncio.run(_executar(pergunta, agent_info, contact, uso, anexos or {}, campanhas or [], manuais or []))

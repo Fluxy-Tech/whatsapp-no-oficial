@@ -2,7 +2,8 @@
 Execução de um turno do agente: a "chamada principal".
 
 1. Abre (ou reaproveita) a sessão do contato e carrega o histórico; as
-   campanhas enviadas desde o último turno entram nele como mensagens do agente.
+   campanhas e a conversa manual desde o último turno entram nele
+   (mensagens_externas).
 2. Junta as funções ativas (defaults + personalizadas) e monta prompt e
    ferramentas a partir delas.
 3. Roda o grafo com o histórico + a mensagem nova.
@@ -17,7 +18,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from src import config
 from src.agent.core.funcao import FuncaoAgente
 from src.agent.core.grafo import construir_grafo
-from src.agent.core.historico import conversa_em_texto, mensagens_de_campanha, texto_da_mensagem
+from src.agent.core.historico import conversa_em_texto, mensagens_externas, texto_da_mensagem
 from src.agent.core.prompt import montar_prompt
 from src.agent.core.turno import Turno
 from src.agent.custom import FUNCOES_PERSONALIZADAS
@@ -47,11 +48,11 @@ def gerar_resposta(pergunta: str, turno: Turno) -> ResultadoResposta:
 
     session_id = store.sessao_atual(contact_id, config.AI_SESSION_TTL_HOURS)
     historico = store.carregar_mensagens(session_id)
-    campanhas = mensagens_de_campanha(turno.campanhas, historico)
-    if campanhas:
+    externas = mensagens_externas(turno.campanhas, turno.manuais, historico)
+    if externas:
         # Gravadas já: ficam na sessão mesmo se o turno falhar.
-        store.salvar_mensagens(session_id, campanhas)
-        historico = [*historico, *campanhas]
+        store.salvar_mensagens(session_id, externas)
+        historico = [*historico, *externas]
 
     funcoes = funcoes_ativas(turno)
     prompt = montar_prompt(turno, funcoes)

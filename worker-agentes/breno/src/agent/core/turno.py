@@ -22,6 +22,9 @@ class Turno:
     # Campanhas enviadas ao contato que ainda não estão na sessão:
     # [{id, campaign, text, sentAt}] (campaignMessages do job).
     campanhas: list[dict] = field(default_factory=list)
+    # Conversa manual trocada enquanto o agente estava pausado para o contato:
+    # [{id, fromMe, text, timestamp}] (manualMessages do job).
+    manuais: list[dict] = field(default_factory=list)
     # Metadados registrados pelas ferramentas NESTE turno ({nome: valor}).
     coletados: dict[str, str] = field(default_factory=dict)
 

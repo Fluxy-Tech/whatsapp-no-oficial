@@ -3,8 +3,9 @@ import { decryptSecret } from "../lib/crypto";
 import { prisma } from "../lib/prisma";
 import { agentReplyQueue, publish } from "../lib/rabbitmq";
 import type { Target } from "@prisma/client";
-import type { WorkerMessage } from "../lib/worker-client";
+import { workerClient, type WorkerMessage } from "../lib/worker-client";
 import { canAnswer } from "./agent.service";
+import { CAMPAIGN_EXTERNAL_ID_PREFIX } from "./campaign.service";
 import { imageRulesOf } from "./image-rules";
 import { CONTACT_NAME_METADADO, extrasOf, hasRealName } from "./target.service";
 
@@ -14,6 +15,10 @@ import { CONTACT_NAME_METADADO, extrasOf, hasRealName } from "./target.service";
 // to the agent together, so it answers once instead of once per message.
 const DEFAULT_WAIT_SECONDS = 20;
 const CONTACT_NAME_DESCRICAO = "Nome do contato (como ele quer ser chamado).";
+// Manual conversation sent to the agent when it is resumed (the most recent ones).
+const MAX_MANUAL_MESSAGES = 50;
+// externalId of the agent's own replies (worker-agentes): already in its history.
+const AGENT_EXTERNAL_ID_PREFIX = "ai-";
 
 async function messageWaitMs(organizationId: string) {
   const organization = await prisma.organization.findUnique({
@@ -57,6 +62,40 @@ function messageText(message: WorkerMessage) {
   const label = MEDIA_LABELS[message.type] ?? `uma mensagem do tipo ${message.type}`;
   const caption = (message.caption ?? message.body ?? "").trim();
   return caption ? `[O contato enviou ${label}] ${caption}` : `[O contato enviou ${label} sem texto]`;
+}
+
+/** What the attendant (or the company's phone) sent, as the agent reads it. */
+function sentMessageText(message: WorkerMessage) {
+  if (message.type === "chat") return message.body?.trim() ?? "";
+  const label = MEDIA_LABELS[message.type] ?? `uma mensagem do tipo ${message.type}`;
+  const caption = (message.caption ?? message.body ?? "").trim();
+  return caption ? `[A empresa enviou ${label}] ${caption}` : `[A empresa enviou ${label}]`;
+}
+
+/**
+ * Messages exchanged while the agent was paused for this contact (and after
+ * it was resumed, until this turn): the attendant's and the contact's. Leaves
+ * out the agent's own replies, campaigns (campaignMessages) and this turn.
+ */
+async function manualMessages(organizationId: string, contact: Target, turnMessageIds: Set<string>) {
+  if (!contact.agentPausedAt) return [];
+  const since = contact.agentPausedAt.getTime();
+  const { items } = await workerClient.listMessages(organizationId, contact.chatId);
+  return items
+    .filter((message) => {
+      if (Date.parse(message.timestamp) < since || turnMessageIds.has(message.messageId)) return false;
+      const externalId = message.externalId ?? "";
+      return !externalId.startsWith(AGENT_EXTERNAL_ID_PREFIX) && !externalId.startsWith(CAMPAIGN_EXTERNAL_ID_PREFIX);
+    })
+    .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+    .map((message) => ({
+      id: message.messageId,
+      fromMe: message.fromMe,
+      text: message.fromMe ? sentMessageText(message) : messageText(message),
+      timestamp: message.timestamp,
+    }))
+    .filter((message) => message.text)
+    .slice(-MAX_MANUAL_MESSAGES);
 }
 
 async function dispatch(organizationId: string, conversation: PendingConversation) {
@@ -109,6 +148,16 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
 
   // Contact's name: the saved one or, if not set yet, the WhatsApp profile name.
   const contactName = [contact.name, contact.pushname].find(hasRealName) ?? null;
+
+  let manual: Awaited<ReturnType<typeof manualMessages>> = [];
+  let manualLoaded = !contact.agentPausedAt;
+  try {
+    manual = await manualMessages(organizationId, contact, new Set(conversation.messages.map((m) => m.messageId)));
+    manualLoaded = true;
+  } catch (error) {
+    // The agent still answers; the manual conversation goes on the next turn.
+    console.error(`Failed to load the manual conversation of ${contact.chatId}:`, error);
+  }
 
   const jobId = randomUUID();
   await publish(
@@ -163,6 +212,7 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
         extras: extrasOf(contact),
       },
       messages,
+      manualMessages: manual,
       campaignMessages: campaignMessages.map((send) => ({
         id: send.id,
         campaign: send.campaign.name,
@@ -172,6 +222,14 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
     },
     jobId,
   );
+
+  // Caught up: only clears the pause it read (it may have been paused again meanwhile).
+  if (contact.agentPausedAt && manualLoaded) {
+    await prisma.target.updateMany({
+      where: { id: contact.id, agentActive: true, agentPausedAt: contact.agentPausedAt },
+      data: { agentPausedAt: null },
+    });
+  }
 
   // Redelivered jobs are fine: the worker skips sends already in the session.
   if (campaignMessages.length) {

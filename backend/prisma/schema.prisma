@@ -240,6 +240,10 @@ model Target {
   isOnline       Boolean      @default(false)
   // false = the AI agent does not answer this contact.
   agentActive    Boolean      @default(true)
+  // When the agent was paused for this contact. On the next turn after it is
+  // resumed, the messages exchanged since then (manual conversation) go into
+  // the agent's history, and this goes back to null.
+  agentPausedAt  DateTime?
   // Metadata collected by the agent: { [metadado name]: value }.
   extras         Json         @default("{}")
   firstMessageAt DateTime?

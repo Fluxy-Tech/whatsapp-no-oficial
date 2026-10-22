@@ -100,6 +100,8 @@ export async function upsertTarget(
             lastSeen,
             isOnline: snapshot.isOnline ?? false,
             agentActive: DEFAULT_AGENT_ACTIVE,
+            // Born paused: once turned on, the agent gets the conversation so far.
+            agentPausedAt: DEFAULT_AGENT_ACTIVE ? null : (messageAt ?? new Date()),
             firstMessageAt: messageAt,
             lastMessageAt: messageAt,
           },
@@ -185,6 +187,7 @@ export async function mergeLidTarget(organizationId: string, fromChatId: string,
         pushname: to.pushname ?? from.pushname,
         // Desligado em qualquer um dos dois continua desligado.
         agentActive: to.agentActive && from.agentActive,
+        agentPausedAt: earlier(to.agentPausedAt, from.agentPausedAt),
         extras: { ...extrasOf(from), ...extrasOf(to) } as Prisma.InputJsonValue,
         lastSeen: later(to.lastSeen, from.lastSeen),
         firstMessageAt: earlier(to.firstMessageAt, from.firstMessageAt),
@@ -225,6 +228,8 @@ export async function updateTarget(organizationId: string, chatId: string, updat
 
     const data: Prisma.TargetUpdateInput = {};
     if (update.agentActive !== undefined) data.agentActive = update.agentActive;
+    // Keeps the first pause while the agent hasn't caught up with the conversation yet.
+    if (update.agentActive === false && target.agentActive && !target.agentPausedAt) data.agentPausedAt = new Date();
     if (update.name?.trim()) data.name = update.name.trim();
     if (update.extras) {
       data.extras = (update.extrasMode === "merge" ? { ...extrasOf(target), ...update.extras } : update.extras) as Prisma.InputJsonValue;
