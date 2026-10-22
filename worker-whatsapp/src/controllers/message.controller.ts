@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { publish } from "../config/rabbitmq";
+import { MessageModel } from "../models/message.model";
 import { QUEUES } from "../queues/queue-names";
 import { listMessages } from "../services/message.service";
 import { outboundMessageSchema } from "../types/queue-payloads";
@@ -11,6 +12,13 @@ const listQuerySchema = z.object({
   before: z.coerce.date().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
+
+/** Conversas que têm mensagens salvas (a lista de Conversas só mostra essas). */
+export async function chats(req: Request<{ organizationId: string }>, res: Response) {
+  const { organizationId } = req.params;
+  const chatIds: string[] = await MessageModel.distinct("chatId", { organizationId });
+  res.json({ chatIds });
+}
 
 export async function index(req: Request<{ organizationId: string; chatId: string }>, res: Response) {
   const { organizationId, chatId } = req.params;

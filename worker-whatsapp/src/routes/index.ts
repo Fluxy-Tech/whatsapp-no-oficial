@@ -25,6 +25,7 @@ api.post("/organizations/:organizationId/contacts/reconcile-lid", contactControl
 api.post("/organizations/:organizationId/contacts/:chatId/refresh", contactController.refresh);
 
 // Mensagens
+api.get("/organizations/:organizationId/chats", messageController.chats);
 api.get("/organizations/:organizationId/chats/:chatId/messages", messageController.index);
 api.post("/organizations/:organizationId/messages", messageController.send);
 

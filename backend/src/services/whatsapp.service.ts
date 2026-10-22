@@ -81,9 +81,25 @@ export async function logoutWhatsappSession(organizationId: string) {
 }
 
 // Shapes the frontend already consumes ("contacts" for the chat list).
+/**
+ * Conversations screen: only contacts with messages in the history (worker).
+ * A @lid contact whose messages moved to its @c.us twin has none left, so it
+ * doesn't show up duplicated. Worker down: contacts that ever had a message.
+ */
 export async function listContacts(organizationId: string) {
-  const targets = await listTargets(organizationId);
-  return targets.map((target) => ({
+  const [targets, chatIds] = await Promise.all([
+    listTargets(organizationId, { onlyWithMessages: true }),
+    workerClient
+      .listChatIds(organizationId)
+      .then(({ chatIds }) => new Set(chatIds))
+      .catch((error) => {
+        console.error(`Failed to list the conversations of ${organizationId} in the worker:`, error);
+        return null;
+      }),
+  ]);
+  return targets
+    .filter((target) => !chatIds || chatIds.has(target.chatId))
+    .map((target) => ({
     ...target,
     contactId: target.chatId,
     formattedName: target.number ? `+${target.number}` : null,

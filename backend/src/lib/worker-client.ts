@@ -122,6 +122,11 @@ export const workerClient = {
     );
   },
 
+  /** Conversations with saved messages (the history lives in the worker). */
+  listChatIds(organizationId: string) {
+    return request<{ chatIds: string[] }>(`/api/organizations/${org(organizationId)}/chats`);
+  },
+
   listMessages(organizationId: string, chatId: string, limit = 200) {
     return request<{ items: WorkerMessage[]; nextBefore: string | null }>(
       `/api/organizations/${org(organizationId)}/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}`,
