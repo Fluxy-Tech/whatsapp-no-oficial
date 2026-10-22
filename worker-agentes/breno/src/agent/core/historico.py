@@ -13,6 +13,9 @@ ferramenta sem a chamada que a originou (a OpenAI recusa a requisição).
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
+# id da mensagem de campanha na sessão (evita gravá-la duas vezes se o job voltar).
+_PREFIXO_CAMPANHA = "campanha-"
+
 
 def texto_da_mensagem(mensagem: BaseMessage) -> str:
     return (mensagem.text or "").strip()
@@ -45,6 +48,20 @@ def limitar_historico(mensagens: list[BaseMessage], limite: int) -> list[BaseMes
     while cortado and isinstance(cortado[0], ToolMessage):
         cortado = cortado[1:]
     return cortado
+
+
+def mensagens_de_campanha(campanhas: list[dict], historico: list[BaseMessage]) -> list[AIMessage]:
+    """Campanhas enviadas ao contato viram mensagens do agente, na ordem de
+    envio: o agente sabe o que o contato está respondendo. As que já estão
+    no histórico ficam de fora."""
+    na_sessao = {mensagem.id for mensagem in historico if mensagem.id}
+    novas = []
+    for campanha in campanhas:
+        texto = (campanha.get("text") or "").strip()
+        id_mensagem = f"{_PREFIXO_CAMPANHA}{campanha.get('id')}"
+        if texto and id_mensagem not in na_sessao:
+            novas.append(AIMessage(content=texto, id=id_mensagem))
+    return novas
 
 
 def conversa_em_texto(mensagens: list[BaseMessage], substituir: dict[str, str] | None = None) -> list[tuple[str, str]]:

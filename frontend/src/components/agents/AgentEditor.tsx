@@ -38,6 +38,7 @@ type Form = {
   tokenAdk: TokenDraft;
   tokenJev: TokenDraft;
   metadados: MetadadoDraft[];
+  requireContactName: boolean;
   resetKeywords: string[];
   resetMessage: string;
   numberPhoneNotification: string;
@@ -71,6 +72,7 @@ function toForm(agent: Agent | null): Form {
       kind: m.kind,
       imageRules: m.imageRules,
     })),
+    requireContactName: agent?.requireContactName ?? false,
     resetKeywords: agent?.resetKeywords ?? [],
     resetMessage: agent?.resetMessage ?? DEFAULT_RESET_MESSAGE,
     numberPhoneNotification: agent?.numberPhoneNotification ?? "",
@@ -220,6 +222,7 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
           kind,
           imageRules: kind === "image" ? imageRules : [],
         })),
+        requireContactName: form.requireContactName,
         resetKeywords: form.resetKeywords,
         resetMessage: form.resetMessage,
         numberPhoneNotification: form.numberPhoneNotification.trim() || null,
@@ -420,6 +423,8 @@ export function AgentEditor({ agent, canEdit, onSaved, onDeleted, onToggleOrgani
                   <MetadadosEditor
                     value={textMetadados}
                     onChange={(metadados) => setForm({ ...form, metadados: [...metadados, ...imageMetadados] })}
+                    requireContactName={form.requireContactName}
+                    onRequireContactNameChange={(requireContactName) => setForm({ ...form, requireContactName })}
                     disabled={disabled}
                     stageOptions={stageOptions}
                   />

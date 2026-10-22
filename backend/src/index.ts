@@ -16,6 +16,7 @@ import profileRouter from "./routes/profile";
 import campaignsRouter from "./routes/campaigns";
 import { AI_QUEUES, consume } from "./lib/rabbitmq";
 import { handleRagResult, type RagResult } from "./services/agent.service";
+import { startReminderScheduler } from "./services/calendar.service";
 import { setupSockets } from "./sockets";
 import { WorkerError } from "./lib/worker-client";
 
@@ -74,4 +75,6 @@ server.listen(port, () => {
   consume<RagResult>(AI_QUEUES.ragResult, handleRagResult).catch((error) => {
     console.error("Failed to consume AI-Worker RAG results:", error);
   });
+  // Calendar event reminders sent to the leads on WhatsApp.
+  startReminderScheduler();
 });

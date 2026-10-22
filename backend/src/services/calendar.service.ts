@@ -1,6 +1,7 @@
 import type { Agent, Prisma } from "@prisma/client";
 import { whatsappEvents } from "../lib/events";
 import { prisma } from "../lib/prisma";
+import { queueTextMessage } from "./whatsapp.service";
 
 export class CalendarError extends Error {
   constructor(
@@ -18,6 +19,8 @@ export const APP_TIMEZONE = process.env.APP_TIMEZONE ?? "America/Sao_Paulo";
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const MINUTE_MS = 60_000;
+// Reminder advance: up to 30 days before the event.
+const MAX_REMINDER_MINUTES = 30 * 24 * 60;
 
 const eventInclude = {
   assignee: { select: { id: true, name: true } },
@@ -44,6 +47,9 @@ export function eventView(event: EventWithRelations) {
       : null,
     source: event.source,
     status: event.status,
+    reminderMessage: event.reminderMessage,
+    reminderMinutesBefore: event.reminderMinutesBefore,
+    reminderSentAt: event.reminderSentAt?.toISOString() ?? null,
   };
 }
 
@@ -348,7 +354,8 @@ export async function rescheduleLeadMeeting(
 
     return tx.calendarEvent.update({
       where: { id: current.id },
-      data: { startsAt: slot.startsAt, endsAt: slot.endsAt, assigneeId },
+      // New time: the reminder goes again before it.
+      data: { startsAt: slot.startsAt, endsAt: slot.endsAt, assigneeId, reminderSentAt: null },
     });
   });
 
@@ -387,6 +394,8 @@ type EventInput = {
   assigneeId?: unknown;
   targetId?: unknown;
   status?: unknown;
+  reminderMessage?: unknown;
+  reminderMinutesBefore?: unknown;
 };
 
 async function eventData(organizationId: string, input: EventInput, current?: { startsAt: Date; endsAt: Date }) {
@@ -424,6 +433,19 @@ async function eventData(organizationId: string, input: EventInput, current?: { 
     if (input.status !== "scheduled" && input.status !== "canceled") throw new CalendarError(400, "Status inválido");
     data.status = input.status;
   }
+  if (input.reminderMessage !== undefined) {
+    data.reminderMessage = String(input.reminderMessage ?? "").trim() || null;
+  }
+  if (input.reminderMinutesBefore !== undefined) {
+    if (input.reminderMinutesBefore === null || input.reminderMinutesBefore === "") data.reminderMinutesBefore = null;
+    else {
+      const minutes = Number(input.reminderMinutesBefore);
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > MAX_REMINDER_MINUTES) {
+        throw new CalendarError(400, "Antecedência do lembrete inválida (de 1 minuto a 30 dias)");
+      }
+      data.reminderMinutesBefore = minutes;
+    }
+  }
   return { data, startsAt, endsAt };
 }
 
@@ -449,9 +471,17 @@ async function ensureAssigneeFree(
   if (conflict) throw new CalendarError(409, "O responsável já tem um evento neste horário");
 }
 
+/** The reminder needs both the message and the advance (or neither). */
+function ensureReminderComplete(message: string | null | undefined, minutesBefore: number | null | undefined) {
+  if (!message !== (minutesBefore == null)) {
+    throw new CalendarError(400, "Para o lembrete, informe a mensagem e quanto tempo antes do horário enviar");
+  }
+}
+
 export async function createEvent(organizationId: string, input: EventInput) {
   if (input.title === undefined) throw new CalendarError(400, "Informe o título do evento");
   const { data, startsAt, endsAt } = await eventData(organizationId, input);
+  ensureReminderComplete(data.reminderMessage as string | null | undefined, data.reminderMinutesBefore as number | null | undefined);
   await ensureAssigneeFree(organizationId, data.assigneeId as string | null | undefined, startsAt, endsAt);
   const event = await prisma.calendarEvent.create({
     data: { ...(data as Prisma.CalendarEventUncheckedCreateInput), organizationId, source: "manual" },
@@ -465,6 +495,18 @@ export async function updateEvent(organizationId: string, eventId: string, input
   const current = await prisma.calendarEvent.findFirst({ where: { id: eventId, organizationId } });
   if (!current) throw new CalendarError(404, "Evento não encontrado");
   const { data, startsAt, endsAt } = await eventData(organizationId, input, current);
+  const reminderMessage = data.reminderMessage !== undefined ? (data.reminderMessage as string | null) : current.reminderMessage;
+  const reminderMinutesBefore =
+    data.reminderMinutesBefore !== undefined ? (data.reminderMinutesBefore as number | null) : current.reminderMinutesBefore;
+  ensureReminderComplete(reminderMessage, reminderMinutesBefore);
+  // Moved, new advance or reactivated: the reminder goes again before the new time.
+  if (
+    startsAt.getTime() !== current.startsAt.getTime() ||
+    reminderMinutesBefore !== current.reminderMinutesBefore ||
+    (data.status === "scheduled" && current.status !== "scheduled")
+  ) {
+    data.reminderSentAt = null;
+  }
   const assigneeId = data.assigneeId !== undefined ? (data.assigneeId as string | null) : current.assigneeId;
   const status = (data.status as string | undefined) ?? current.status;
   if (status === "scheduled") await ensureAssigneeFree(organizationId, assigneeId, startsAt, endsAt, eventId);
@@ -478,4 +520,48 @@ export async function deleteEvent(organizationId: string, eventId: string) {
   const { count } = await prisma.calendarEvent.deleteMany({ where: { id: eventId, organizationId } });
   if (!count) throw new CalendarError(404, "Evento não encontrado");
   notify(organizationId);
+}
+
+// ---------------------------------------------------------------------------
+// Reminders
+// ---------------------------------------------------------------------------
+
+const REMINDER_INTERVAL_MS = MINUTE_MS;
+
+/**
+ * Sends the reminders that are due: scheduled events with a lead whose
+ * startsAt - reminderMinutesBefore has passed (and that haven't started yet).
+ * The UPDATE marks them as sent atomically, so two backend instances never
+ * send the same reminder.
+ */
+export async function sendDueReminders() {
+  const due = await prisma.$queryRaw<{ id: string; organizationId: string; chatId: string; message: string }[]>`
+    UPDATE "calendar_event" AS event
+    SET "reminderSentAt" = now()
+    FROM "target" AS target
+    WHERE event."targetId" = target.id
+      AND event.status = 'scheduled'
+      AND event."reminderSentAt" IS NULL
+      AND event."reminderMessage" IS NOT NULL
+      AND event."reminderMinutesBefore" IS NOT NULL
+      AND event."startsAt" > now()
+      AND event."startsAt" - make_interval(mins => event."reminderMinutesBefore") <= now()
+    RETURNING event.id, event."organizationId", target."chatId", event."reminderMessage" AS message
+  `;
+  for (const reminder of due) {
+    try {
+      await queueTextMessage(reminder.organizationId, reminder.chatId, reminder.message);
+    } catch (error) {
+      // Not queued: free it so the next round tries again.
+      await prisma.calendarEvent.update({ where: { id: reminder.id }, data: { reminderSentAt: null } });
+      console.error(`Failed to queue the reminder of event ${reminder.id}:`, error);
+    }
+  }
+  if (due.length) new Set(due.map((reminder) => reminder.organizationId)).forEach(notify);
+}
+
+export function startReminderScheduler() {
+  const run = () => sendDueReminders().catch((error) => console.error("Failed to send event reminders:", error));
+  run();
+  return setInterval(run, REMINDER_INTERVAL_MS);
 }

@@ -94,6 +94,7 @@ async function sendContact(
   contact: PendingContact,
 ): Promise<void> {
   const variables = contact.variables ?? [];
+  const extras = contact.extras ?? {};
   const text = interpolateTemplate(campaign.templateText, variables);
   const externalId = `${CAMPAIGN_EXTERNAL_ID_PREFIX}${randomUUID()}`;
 
@@ -106,6 +107,7 @@ async function sendContact(
         status: "FAILED",
         error: "Contato bloqueado para campanhas.",
         variables,
+        extras,
         text,
       },
     });
@@ -124,6 +126,7 @@ async function sendContact(
       status: "QUEUED",
       messageId: externalId,
       variables,
+      extras,
       text,
     },
   });

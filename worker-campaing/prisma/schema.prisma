@@ -68,6 +68,7 @@ model CampaignTarget {
   error             String?
   messageId         String?  @unique
   variables         Json     @default("[]")
+  extras            Json     @default("{}")
   text              String?
   respondedCampaign Boolean  @default(false)
   campaignResponse  String?

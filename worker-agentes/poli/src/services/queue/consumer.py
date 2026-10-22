@@ -14,8 +14,13 @@ manda mensagem e a organização tem um agente ativo com context):
             "schedulingEnabled": bool, "meetingDurationMinutes": int},
   "contact": {"id", "chatId", "number", "name", "extras": {nome: valor}},
   "messages": [{"messageId", "type", "text", "timestamp",
-                "media": {"bucket", "key", "mimetype", "link"} | null}]
+                "media": {"bucket", "key", "mimetype", "link"} | null}],
+  "campaignMessages": [{"id", "campaign", "text", "sentAt"}]
 }
+
+campaignMessages: campanhas enviadas ao contato que o agente ainda não viu.
+Entram na sessão como falas do agente antes do turno (ver
+src/services/adk/historico.py: eventos_de_campanha).
 
 As imagens (type "image" com media) são analisadas pelo JEV antes do ADK: a
 análise de tatuagem vai como texto logo depois da mensagem e fica no state da
@@ -220,7 +225,14 @@ def _responder(
     anexos: dict[str, list[dict]],
 ) -> Reply:
     # As ferramentas de agendamento precisam saber de qual organização é a agenda.
-    resultado = gerar_resposta(pergunta, {**agent, "organizationId": organization_id}, contact, uso, anexos)
+    resultado = gerar_resposta(
+        pergunta,
+        {**agent, "organizationId": organization_id},
+        contact,
+        uso,
+        anexos,
+        campanhas=job.get("campaignMessages") or [],
+    )
     _log(job, f"resposta: {resultado.texto[:200]!r} extras: {resultado.extras_coletados}")
 
     if resultado.extras_coletados:

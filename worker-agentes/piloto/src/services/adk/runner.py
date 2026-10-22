@@ -8,6 +8,7 @@ from google.genai import types
 from src.config import AI_SESSION_TTL_HOURS
 from src.infra.adk.session_service import get_session_service
 from src.services.adk.agent import build_agent
+from src.services.adk.historico import eventos_de_campanha
 from src.services.adk.infos import APP_NAME, GOOGLE_ADK_MODEL, QUEBRA_MENSAGEM, STATE_EXTRAS
 from src.services.tokens import UsoTokens
 
@@ -61,7 +62,12 @@ MAX_ITENS_NO_STATE = 10
 
 
 async def _executar(
-    pergunta: str, agent_info: dict, contact: dict, uso: UsoTokens | None, anexos: dict[str, list[dict]]
+    pergunta: str,
+    agent_info: dict,
+    contact: dict,
+    uso: UsoTokens | None,
+    anexos: dict[str, list[dict]],
+    campanhas: list[dict],
 ) -> ResultadoResposta:
     # Um contato = um usuário do ADK (id do contato no worker-whatsapp).
     user_id = contact["id"]
@@ -73,7 +79,12 @@ async def _executar(
         antes = await session_service.get_session(app_name=APP_NAME, user_id=user_id, session_id=session_id)
         extras_antes = dict((antes.state if antes else {}).get(STATE_EXTRAS) or {})
 
-        runner = Runner(agent=build_agent(agent_info, contact, uso), app_name=APP_NAME, session_service=session_service)
+        agente = build_agent(agent_info, contact, uso)
+        # Campanhas enviadas desde o último turno: gravadas já, ficam na sessão mesmo se o turno falhar.
+        for evento in eventos_de_campanha(campanhas, antes, agente.name):
+            await session_service.append_event(antes, evento)
+
+        runner = Runner(agent=agente, app_name=APP_NAME, session_service=session_service)
         mensagem = types.Content(role="user", parts=[types.Part(text=pergunta)])
         # Anexos deste turno (ex.: imagens recebidas) entram no state junto com a mensagem.
         estado = (antes.state if antes else {}) or {}
@@ -126,8 +137,10 @@ def gerar_resposta(
     contact: dict,
     uso: UsoTokens | None = None,
     anexos: dict[str, list[dict]] | None = None,
+    campanhas: list[dict] | None = None,
 ) -> ResultadoResposta:
-    """`anexos`: {chave do state: itens deste turno}, somados às listas da sessão."""
+    """`anexos`: {chave do state: itens deste turno}, somados às listas da sessão.
+    `campanhas`: campaignMessages do job, gravadas na sessão antes do turno."""
     if not contact.get("id"):
         raise ValueError("Contato sem 'id' — não é possível abrir a sessão no ADK.")
-    return asyncio.run(_executar(pergunta, agent_info, contact, uso, anexos or {}))
+    return asyncio.run(_executar(pergunta, agent_info, contact, uso, anexos or {}, campanhas or []))

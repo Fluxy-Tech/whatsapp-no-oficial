@@ -82,6 +82,8 @@ export type Agent = {
   /** What the agent writes in that message (e.g. a report of the conversation). */
   descriptionNotification: string;
   rgbs: AgentRgbs;
+  /** Special "Nome" metadado: asks for the contact's name when it has none (saved as the contact's name). */
+  requireContactName: boolean;
   /** Kanban: create the lead on the first message, in leadStageId. */
   leadOnFirstMessage: boolean;
   leadStageId: string | null;

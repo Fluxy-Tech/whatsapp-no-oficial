@@ -43,6 +43,11 @@ ela é, o que você pode e não pode falar, e como deve se comunicar). Siga-as.
 ## Sobre este contato
 
 {dados_contato}
+
+Use esses dados como contexto da conversa (ex.: chamar o contato pelo nome) e
+não pergunte de novo nenhum deles. Só peça ao contato os dados listados em
+"Dados que você precisa coletar"; não solicite nenhum outro dado dele (como
+e-mail, endereço ou documento).
 """
 
 DIAS_SEMANA = ("segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo")
@@ -60,13 +65,19 @@ def _dados_contato(turno: Turno) -> str:
     contato = turno.contact
     linhas = []
     if contato.get("name"):
-        linhas.append(f"- Nome no perfil do WhatsApp: {contato['name']} (confirme antes de tratar como nome real)")
+        linhas.append(f"- Nome: {contato['name']}")
     if contato.get("number"):
         linhas.append(f"- Telefone: {contato['number']}")
 
-    coletados = [f"- {nome}: {valor}" for nome, valor in turno.extras.items() if str(valor or "").strip()]
+    # Imagens recebidas guardam só um link: não servem de contexto.
+    imagens = {m.get("name") for m in turno.agent.get("metadados") or [] if m.get("kind") == "image"}
+    coletados = [
+        f"- {nome}: {valor}"
+        for nome, valor in turno.extras.items()
+        if str(valor or "").strip() and nome not in imagens
+    ]
     if coletados:
-        linhas.append("Dados já registrados (não pergunte de novo):")
+        linhas.append("Dados já registrados:")
         linhas.extend(coletados)
     elif turno.agent.get("metadados"):
         linhas.append("Nenhum dado deste contato foi registrado ainda.")

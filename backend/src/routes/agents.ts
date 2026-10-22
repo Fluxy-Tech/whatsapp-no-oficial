@@ -74,6 +74,7 @@ function parseInput(body: unknown): AgentInput {
     };
   }
   if (raw.leadOnFirstMessage !== undefined) input.leadOnFirstMessage = Boolean(raw.leadOnFirstMessage);
+  if (raw.requireContactName !== undefined) input.requireContactName = Boolean(raw.requireContactName);
   if (raw.leadStageId !== undefined) input.leadStageId = optionalId(raw.leadStageId);
   if (raw.completedStageId !== undefined) input.completedStageId = optionalId(raw.completedStageId);
   if (raw.leadAssigneeId !== undefined) input.leadAssigneeId = optionalId(raw.leadAssigneeId);

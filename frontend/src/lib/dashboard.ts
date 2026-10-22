@@ -37,6 +37,10 @@ export type CalendarEvent = {
   lead: { id: string; name: string | null; number: string | null; chatId: string } | null;
   source: "manual" | "ai";
   status: "scheduled" | "canceled";
+  /** WhatsApp message sent to the lead reminderMinutesBefore minutes before startsAt. */
+  reminderMessage: string | null;
+  reminderMinutesBefore: number | null;
+  reminderSentAt: string | null;
 };
 
 export const DEFAULT_SOURCE = "WhatsApp";

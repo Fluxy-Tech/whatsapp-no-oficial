@@ -2,6 +2,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { OptionsSelect } from "@/components/ui/options-select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { ImageRule, Metadado } from "@/lib/agents";
 
@@ -20,18 +21,44 @@ export type StageOption = { id: string; label: string };
 type MetadadosEditorProps = {
   value: MetadadoDraft[];
   onChange: (value: MetadadoDraft[]) => void;
+  /** Special "Nome" metadado (the contact's own name): only on/off. */
+  requireContactName: boolean;
+  onRequireContactNameChange: (value: boolean) => void;
   disabled?: boolean;
   /** Kanban columns ("Esteira › Coluna"); empty hides the selector. */
   stageOptions?: StageOption[];
 };
 
-export function MetadadosEditor({ value, onChange, disabled, stageOptions = [] }: MetadadosEditorProps) {
+export function MetadadosEditor({
+  value,
+  onChange,
+  requireContactName,
+  onRequireContactNameChange,
+  disabled,
+  stageOptions = [],
+}: MetadadosEditorProps) {
   function update(key: string, patch: Partial<MetadadoDraft>) {
     onChange(value.map((item) => (item.key === key ? { ...item, ...patch } : item)));
   }
 
   return (
     <div className="space-y-3">
+      <div className="space-y-1 rounded-md border p-3">
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <Switch
+            checked={requireContactName}
+            onCheckedChange={onRequireContactNameChange}
+            disabled={disabled}
+            aria-label="Solicitar o nome do contato"
+          />
+          Nome
+        </label>
+        <p className="text-xs text-muted-foreground">
+          Ligado, o agente pergunta o nome quando o contato ainda não tem um e salva como o nome do contato. Se o nome
+          já veio do WhatsApp ou de uma campanha, ele não pergunta.
+        </p>
+      </div>
+
       {value.length === 0 && (
         <p className="text-sm text-muted-foreground">
           Nenhum metadado. Adicione os dados que o agente deve perguntar e guardar de cada contato.

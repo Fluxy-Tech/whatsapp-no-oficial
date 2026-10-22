@@ -38,9 +38,20 @@ import { WhatsappPreview } from "@/components/campaigns/WhatsappPreview";
 
 type WhatsappStatus = { status: string; phoneNumber: string | null };
 
-type ParsedRow = { index: number; phone: string; name: string; variables: string[]; errors: string[] };
+type ParsedRow = {
+  index: number;
+  phone: string;
+  name: string;
+  variables: string[];
+  extras: Record<string, string>;
+  errors: string[];
+};
 
-type ContactPayload = { phone: string; name?: string; variables: string[] };
+type ContactPayload = { phone: string; name?: string; variables: string[]; extras?: Record<string, string> };
+
+// Columns the campaign itself uses (normalized); any other column goes to the contact's metadados.
+const RESERVED_COLUMNS = new Set(["telefone", "phone", "celular", "nome", "name"]);
+const isReservedColumn = (key: string) => RESERVED_COLUMNS.has(key) || /^(variavel|var)\d+$/.test(key);
 
 function normalizeKey(key: string): string {
   return key
@@ -55,7 +66,15 @@ function parseRows(raw: Record<string, string>[], variableCount: number): Parsed
   const seen = new Map<string, number>();
   return raw.map((rawRow, i) => {
     const normalized: Record<string, string> = {};
-    for (const [k, v] of Object.entries(rawRow)) normalized[normalizeKey(k)] = (v ?? "").toString().trim();
+    // Extra columns keep the header as written: it is the metadado name on the contact.
+    const extras: Record<string, string> = {};
+    for (const [k, v] of Object.entries(rawRow)) {
+      const key = normalizeKey(k);
+      const value = (v ?? "").toString().trim();
+      normalized[key] = value;
+      // "__parsed_extra": cells beyond the header (Papa), with no column name.
+      if (key && k !== "__parsed_extra" && !isReservedColumn(key) && value) extras[k.trim()] = value;
+    }
 
     const phone = normalizePhone(normalized.telefone ?? normalized.phone ?? normalized.celular ?? "");
     const name = normalized.nome ?? normalized.name ?? "";
@@ -72,7 +91,7 @@ function parseRows(raw: Record<string, string>[], variableCount: number): Parsed
       if (!value) errors.push(`Variável ${v} ausente`);
     }
 
-    return { index: i + 1, phone, name, variables, errors };
+    return { index: i + 1, phone, name, variables, extras, errors };
   });
 }
 
@@ -204,7 +223,12 @@ export function CampaignNewTab() {
 
   function buildContacts(): ContactPayload[] {
     if (mode === "CSV") {
-      return validRows.map((r) => ({ phone: r.phone, name: r.name || undefined, variables: r.variables }));
+      return validRows.map((r) => ({
+        phone: r.phone,
+        name: r.name || undefined,
+        variables: r.variables,
+        extras: Object.keys(r.extras).length ? r.extras : undefined,
+      }));
     }
     return [{ phone: manualPhoneDigits, name: manualName.trim() || undefined, variables: manualValues.map((v) => v.trim()) }];
   }
@@ -463,7 +487,8 @@ export function CampaignNewTab() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <Label htmlFor="campaign-csv">
                     Arquivo CSV: telefone (DDD + número), nome (opcional)
-                    {totalVars > 0 ? ` e variavel1 a variavel${totalVars}` : ""}
+                    {totalVars > 0 ? ` e variavel1 a variavel${totalVars}` : ""}. Outras colunas viram metadados
+                    do contato.
                   </Label>
                   <Button type="button" variant="outline" size="sm" className="gap-2" onClick={downloadModel}>
                     <Download className="h-4 w-4" /> Baixar modelo CSV

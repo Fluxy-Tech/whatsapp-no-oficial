@@ -7,4 +7,7 @@ export interface PendingContact {
   name?: string;
   /// Valores de {{1}}, {{2}}... na ordem.
   variables: string[];
+  /// Colunas extras do CSV ({ coluna: valor }); o backend as grava nos
+  /// metadados (extras) do contato quando o envio é confirmado.
+  extras?: Record<string, string>;
 }

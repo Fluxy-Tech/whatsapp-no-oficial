@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma";
 import { AGENT_REPLY_QUEUE_SUFFIX, AI_QUEUES, agentQueueKey, publish } from "../lib/rabbitmq";
 import { deleteIfStoredDocument, uploadAgentDocument } from "../lib/s3";
 import { imageRulesOf, normalizeImageRules } from "./image-rules";
+import { CONTACT_NAME_METADADO } from "./target.service";
 
 export class AgentError extends Error {
   constructor(
@@ -75,6 +76,8 @@ export type AgentInput = {
   tokenJev?: string | null;
   /** Full list: metadados missing from it are deleted. */
   metadados?: MetadadoInput[];
+  /** Special "Nome" metadado: ask for the contact's name when it has none. */
+  requireContactName?: boolean;
   /** Messages that reset the conversation when sent alone (full list). */
   resetKeywords?: string[];
   /** Sent when a reset keyword ends the conversation; empty = default phrase. */
@@ -157,6 +160,7 @@ export function agentView(agent: AgentWithMetadados, activeAgentId: string | nul
       timeLarge: agent.timeLarge,
     },
     leadOnFirstMessage: agent.leadOnFirstMessage,
+    requireContactName: agent.requireContactName,
     leadStageId: agent.leadStageId,
     completedStageId: agent.completedStageId,
     leadAssigneeId: agent.leadAssigneeId,
@@ -214,6 +218,9 @@ function normalizeMetadados(metadados: MetadadoInput[]) {
   });
 
   if (normalized.some((m) => !m.name)) throw new AgentError(400, "Every metadado needs a name");
+  if (normalized.some((m) => m.name.toLowerCase() === CONTACT_NAME_METADADO.toLowerCase())) {
+    throw new AgentError(400, `"${CONTACT_NAME_METADADO}" é o metadado especial do nome do contato: ative-o em vez de criar um metadado com esse nome.`);
+  }
   const names = normalized.map((m) => m.name.toLowerCase());
   if (new Set(names).size !== names.length) throw new AgentError(400, "Metadado names must be unique");
   return normalized;
@@ -409,6 +416,7 @@ export async function createAgent(organizationId: string, input: AgentInput) {
       descriptionNotification: descriptionNotificationOf(input.descriptionNotification),
       ...rgbsData(input.rgbs),
       leadOnFirstMessage: input.leadOnFirstMessage ?? false,
+      requireContactName: input.requireContactName ?? false,
       leadStageId: input.leadStageId ?? null,
       completedStageId: input.completedStageId ?? null,
       leadAssigneeId: input.leadAssigneeId ?? null,
@@ -455,6 +463,7 @@ export async function updateAgent(organizationId: string, agentId: string, input
   }
   Object.assign(data, rgbsData(input.rgbs));
   if (input.leadOnFirstMessage !== undefined) data.leadOnFirstMessage = input.leadOnFirstMessage;
+  if (input.requireContactName !== undefined) data.requireContactName = input.requireContactName;
   await validateStageIds(organizationId, [
     input.leadStageId,
     input.completedStageId,

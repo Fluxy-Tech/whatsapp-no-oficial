@@ -75,6 +75,30 @@ router.get("/targets/:id", async (req, res) => {
   res.json(targetView(target));
 });
 
+// Conversation screen: contact of a chat (agent on/off for this contact).
+router.get("/contacts/:chatId", requirePermission("conversas", "view"), async (req, res) => {
+  const organizationId = req.member!.organizationId;
+  const target = await prisma.target.findUnique({
+    where: { organizationId_chatId: { organizationId, chatId: String(req.params.chatId) } },
+  });
+  if (!target) return res.status(404).json({ error: "Contact not found" });
+  res.json(targetView(target));
+});
+
+// Conversation screen: pauses/resumes the AI agent for this contact only, so
+// the attendant can carry on the conversation by hand.
+router.put("/contacts/:chatId/agent", requirePermission("conversas", "edit"), async (req, res) => {
+  const { agentActive } = (req.body ?? {}) as { agentActive?: unknown };
+  if (typeof agentActive !== "boolean") return res.status(400).json({ error: "agentActive must be a boolean" });
+
+  const organizationId = req.member!.organizationId;
+  const contact = await updateContact(organizationId, String(req.params.chatId), { agentActive });
+  if (!contact) return res.status(404).json({ error: "Contact not found" });
+
+  whatsappEvents.emit("contact-updated", { organizationId, contact });
+  res.json(contact);
+});
+
 // Turns the AI agent on/off for a contact and/or edits the collected metadata (extras).
 router.patch("/contacts/:chatId", requirePermission("leads", "edit"), async (req, res) => {
   const { agentActive, extras } = (req.body ?? {}) as { agentActive?: unknown; extras?: unknown };

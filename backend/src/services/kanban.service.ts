@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { whatsappEvents } from "../lib/events";
 import { prisma } from "../lib/prisma";
-import { extrasOf } from "./target.service";
+import { extrasOf, hasRealName } from "./target.service";
 
 export class KanbanError extends Error {
   constructor(
@@ -429,21 +429,25 @@ const filled = (value: unknown) => Boolean(String(value ?? "").trim());
 /**
  * The agent collected metadata: moves the lead to the stage of each collected
  * metadado and, once all of them are filled, to the agent's "completed" stage.
+ * With the special "Nome" metadado on, the contact's name also counts.
  */
 export async function onMetadataCollected(
   organizationId: string,
   targetId: string,
   collected: Record<string, string>,
   extras: Record<string, string>,
+  contactName: string | null,
 ) {
   const agent = await organizationAgent(organizationId);
-  if (!agent || !agent.metadados.length) return;
+  if (!agent || (!agent.metadados.length && !agent.requireContactName)) return;
 
   let stageId: string | null = null;
   for (const metadado of agent.metadados) {
     if (metadado.stageId && filled(collected[metadado.name])) stageId = metadado.stageId;
   }
-  const complete = agent.metadados.every((metadado) => filled(extras[metadado.name]));
+  const complete =
+    agent.metadados.every((metadado) => filled(extras[metadado.name])) &&
+    (!agent.requireContactName || hasRealName(contactName));
   if (complete && agent.completedStageId) stageId = agent.completedStageId;
   if (!stageId) return;
 

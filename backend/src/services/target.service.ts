@@ -19,6 +19,14 @@ const DEFAULT_AGENT_ACTIVE = process.env.DEFAULT_AGENT_ACTIVE !== "false";
 // aparece, o worker manda contact.merged e o contato vira @c.us (mergeLidTarget).
 export const isContactChatId = (chatId: string) => /^\d{8,}@(c\.us|lid)$/.test(chatId);
 
+// Special agent metadado: the contact's own name (Target.name), not an extra.
+// The dispatcher adds it to the agent's metadados while the contact has no
+// name; what the agent collects under it is saved in Target.name.
+export const CONTACT_NAME_METADADO = "Nome";
+
+/** A real name has at least one letter (WhatsApp may give the formatted phone). */
+export const hasRealName = (name: string | null | undefined): name is string => Boolean(name && /\p{L}/u.test(name));
+
 export function extrasOf(target: Pick<Target, "extras">): Record<string, string> {
   const value = target.extras;
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, string>) : {};
@@ -87,7 +95,7 @@ export async function upsertTarget(
             organizationId,
             chatId: snapshot.chatId,
             number: snapshot.number ?? null,
-            name: snapshot.name ?? null,
+            name: hasRealName(snapshot.name) ? snapshot.name : null,
             pushname: snapshot.pushname ?? null,
             lastSeen,
             isOnline: snapshot.isOnline ?? false,
@@ -107,7 +115,9 @@ export async function upsertTarget(
       where: { id: existing.id },
       data: {
         ...(snapshot.number ? { number: snapshot.number } : {}),
-        ...(snapshot.name ? { name: snapshot.name } : {}),
+        // The WhatsApp name only fills an empty name: one collected by the
+        // agent or from a campaign CSV is never overwritten.
+        ...(hasRealName(snapshot.name) && !hasRealName(existing.name) ? { name: snapshot.name } : {}),
         ...(snapshot.pushname ? { pushname: snapshot.pushname } : {}),
         ...(snapshot.isOnline !== undefined ? { isOnline: snapshot.isOnline } : {}),
         lastSeen: later(existing.lastSeen, lastSeen),
@@ -204,6 +214,8 @@ export type TargetUpdate = {
   extras?: Record<string, string>;
   /** replace: overwrite all extras (screen); merge: only the keys sent (agent). */
   extrasMode?: "replace" | "merge";
+  /** Contact's name, collected by the agent (special "Nome" metadado). */
+  name?: string;
 };
 
 export async function updateTarget(organizationId: string, chatId: string, update: TargetUpdate) {
@@ -213,6 +225,7 @@ export async function updateTarget(organizationId: string, chatId: string, updat
 
     const data: Prisma.TargetUpdateInput = {};
     if (update.agentActive !== undefined) data.agentActive = update.agentActive;
+    if (update.name?.trim()) data.name = update.name.trim();
     if (update.extras) {
       data.extras = (update.extrasMode === "merge" ? { ...extrasOf(target), ...update.extras } : update.extras) as Prisma.InputJsonValue;
     }

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bot, CalendarX, RotateCcw, Target as TargetIcon, Trash2 } from "lucide-react";
+import { BellRing, Bot, CalendarX, RotateCcw, Target as TargetIcon, Trash2 } from "lucide-react";
 import type { CalendarEvent } from "@/lib/dashboard";
 import type { Member } from "@/lib/organization";
 import { type Target, targetLabel } from "@/lib/leads";
@@ -26,7 +26,20 @@ export type NewEvent = {
   endsAt: string;
   assigneeId: string | null;
   targetId: string | null;
+  reminderMessage: string | null;
+  reminderMinutesBefore: number | null;
 };
+
+type ReminderUnit = "minutes" | "hours";
+const UNIT_MINUTES: Record<ReminderUnit, number> = { minutes: 1, hours: 60 };
+
+/** 120 -> { amount: "2", unit: "hours" }; 90 -> { amount: "90", unit: "minutes" }. */
+function reminderFields(minutesBefore: number | null) {
+  if (!minutesBefore) return { reminderAmount: "", reminderUnit: "hours" as ReminderUnit };
+  return minutesBefore % 60 === 0
+    ? { reminderAmount: String(minutesBefore / 60), reminderUnit: "hours" as ReminderUnit }
+    : { reminderAmount: String(minutesBefore), reminderUnit: "minutes" as ReminderUnit };
+}
 
 type EventDrawerProps = {
   open: boolean;
@@ -77,6 +90,8 @@ export function EventDrawer({
     assigneeId: "",
     targetId: "",
     description: "",
+    reminderMessage: "",
+    ...reminderFields(null),
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,11 +110,23 @@ export function EventDrawer({
         assigneeId: editing.assignee?.id ?? "",
         targetId: editing.lead?.id ?? "",
         description: editing.description,
+        reminderMessage: editing.reminderMessage ?? "",
+        ...reminderFields(editing.reminderMinutesBefore),
       });
       return;
     }
     const start = startTime ?? "09:00";
-    setDraft({ title: "", date, start, end: plusOneHour(start), assigneeId: "", targetId: "", description: "" });
+    setDraft({
+      title: "",
+      date,
+      start,
+      end: plusOneHour(start),
+      assigneeId: "",
+      targetId: "",
+      description: "",
+      reminderMessage: "",
+      ...reminderFields(null),
+    });
     // Re-fill only when opening or switching events, not on every reload of the same one.
   }, [open, date, startTime, editing?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -117,6 +144,13 @@ export function EventDrawer({
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    // The reminder goes to the lead: without one it's dropped.
+    const reminderMessage = draft.targetId ? draft.reminderMessage.trim() : "";
+    const reminderAmount = draft.targetId ? Number(draft.reminderAmount) : 0;
+    if (Boolean(reminderMessage) !== reminderAmount > 0) {
+      setError("Para o lembrete, informe a mensagem e quanto tempo antes do horário enviar.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -127,6 +161,10 @@ export function EventDrawer({
         endsAt: new Date(`${draft.date}T${draft.end}`).toISOString(),
         assigneeId: draft.assigneeId || null,
         targetId: draft.targetId || null,
+        reminderMessage: reminderMessage || null,
+        reminderMinutesBefore: reminderMessage
+          ? Math.round(reminderAmount * UNIT_MINUTES[draft.reminderUnit])
+          : null,
       });
       onOpenChange(false);
     } catch (err) {
@@ -230,6 +268,54 @@ export function EventDrawer({
                 ]}
               />
             </div>
+            {draft.targetId && (
+              <div className="space-y-3 rounded-lg border p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="event-reminder-message" className="flex items-center gap-1.5">
+                    <BellRing className="h-4 w-4" />
+                    Lembrete para o lead
+                  </Label>
+                  {editing?.reminderSentAt && (
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
+                      Enviado
+                    </span>
+                  )}
+                </div>
+                <Textarea
+                  id="event-reminder-message"
+                  value={draft.reminderMessage}
+                  onChange={(e) => setDraft({ ...draft, reminderMessage: e.target.value })}
+                  placeholder="Ex.: Olá! Passando para lembrar da nossa reunião hoje às 14h."
+                  className="min-h-20"
+                />
+                <div className="space-y-2">
+                  <Label htmlFor="event-reminder-amount">Enviar quanto tempo antes</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      id="event-reminder-amount"
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={draft.reminderAmount}
+                      onChange={(e) => setDraft({ ...draft, reminderAmount: e.target.value })}
+                      placeholder="Ex.: 2"
+                    />
+                    <OptionsSelect
+                      id="event-reminder-unit"
+                      value={draft.reminderUnit}
+                      onValueChange={(reminderUnit) => setDraft({ ...draft, reminderUnit: reminderUnit as ReminderUnit })}
+                      options={[
+                        { value: "minutes", label: "Minutos antes" },
+                        { value: "hours", label: "Horas antes" },
+                      ]}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Enviada pelo WhatsApp ao lead. Deixe em branco para não enviar lembrete.
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="event-description">Descrição</Label>
               <Textarea

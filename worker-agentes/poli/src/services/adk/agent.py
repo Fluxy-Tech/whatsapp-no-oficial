@@ -3,7 +3,7 @@ Monta o agente do ADK a cada mensagem a partir do payload do backend:
 
   agent:   {id, name, context, tokenOpenAi, tokenAdk, tokenJev,
             metadados: [{name, descricao, kind: "text" | "image", imageRules}], documents: [url]}
-  contact: {id, chatId, number, name, extras: {nome do metadado: valor}}
+  contact: {id, chatId, number, name, extras: {nome do metadado ou coluna do CSV: valor}}
 
 `context` é o prompt definido pela empresa na plataforma. Poli atende uma
 tatuadora: além de coletar os metadados configurados (registrar_metadado, com
@@ -38,6 +38,17 @@ BASE_INSTRUCTION = """
 Você é {nome}, atendendo os clientes da empresa pelo WhatsApp.
 
 {context}
+"""
+
+CONTATO_INSTRUCTION = """
+## Sobre este contato
+
+{itens}
+
+Use esses dados como contexto da conversa (ex.: chamar o contato pelo nome) e
+não pergunte de novo nenhum deles. Só peça ao contato os dados listados em
+"Dados que você precisa coletar"; não solicite nenhum outro dado dele (como
+e-mail, endereço ou documento).
 """
 
 COLETA_INSTRUCTION = """
@@ -162,6 +173,23 @@ def metadados_do_agente(agent_info: dict) -> list[dict]:
     return metadados
 
 
+def _contato(contact: dict, metadados: list[dict]) -> str:
+    """Tudo o que se sabe do contato (perfil + extras), fixo em todo turno. Os
+    metadados configurados aparecem em "Dados que você precisa coletar" e as
+    imagens recebidas guardam só um link, então ficam de fora daqui."""
+    linhas = []
+    if contact.get("name"):
+        linhas.append(f"- Nome: {contact['name']}")
+    if contact.get("number"):
+        linhas.append(f"- Telefone: {contact['number']}")
+    configurados = {m["name"] for m in metadados}
+    for nome, valor in (contact.get("extras") or {}).items():
+        valor = str(valor or "").strip()
+        if valor and nome not in configurados:
+            linhas.append(f"- {nome}: {valor}")
+    return CONTATO_INSTRUCTION.format(itens="\n".join(linhas) or "Nenhuma informação sobre este contato ainda.")
+
+
 def _coleta(contact: dict, metadados: list[dict]) -> str:
     if not metadados:
         return ""
@@ -205,7 +233,11 @@ def build_agent(agent_info: dict, contact: dict | None = None, uso: UsoTokens | 
     # organizationId é colocado no agent_info pelo consumer (vem no job).
     agenda = bool(agent_info.get("schedulingEnabled") and agent_info.get("organizationId") and contact.get("chatId"))
 
-    secoes = [_coleta(contact, metadados), _imagens(contact, imagens)]
+    secoes = [
+        _contato(contact, metadados_do_agente(agent_info)),
+        _coleta(contact, metadados),
+        _imagens(contact, imagens),
+    ]
     if tem_documentos:
         secoes.append(RAG_INSTRUCTION)
     if agenda:

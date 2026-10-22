@@ -1,5 +1,6 @@
 import { Prisma, type Campaign, type Target } from "@prisma/client";
 import { prisma } from "../lib/prisma";
+import { extrasOf, hasRealName, parseExtras } from "./target.service";
 
 // Campaigns are created here and sent in batches by worker-campaing-no-oficia,
 // which publishes each message to the worker-whatsapp outbound queue with an
@@ -13,6 +14,10 @@ const MAX_TEMPLATE_LENGTH = 4096;
 const MAX_CONTACTS = 50_000;
 // CSVs grandes estourariam o limite de parâmetros do Postgres num único INSERT.
 const PENDING_CONTACTS_CHUNK_SIZE = 1000;
+// Extra CSV columns saved into the contact's extras (metadata).
+const MAX_EXTRAS_PER_CONTACT = 50;
+const MAX_EXTRA_KEY_LENGTH = 100;
+const MAX_EXTRA_VALUE_LENGTH = 1000;
 // Session states in which nothing can be sent: the campaign is paused.
 const DISCONNECTED_STATUSES = new Set(["DISCONNECTED", "ERROR", "QRCODE"]);
 
@@ -25,7 +30,13 @@ export class CampaignError extends Error {
   }
 }
 
-export type CampaignContactInput = { phone: string; name?: string; variables: string[] };
+export type CampaignContactInput = {
+  phone: string;
+  name?: string;
+  variables: string[];
+  // Extra CSV columns: { column: value }.
+  extras?: Record<string, string>;
+};
 
 export type CreateCampaignInput = {
   name: string;
@@ -110,8 +121,37 @@ function validateContacts(contacts: CampaignContactInput[], variableCount: numbe
     }
 
     const name = contact.name ? String(contact.name).trim() : "";
-    return { phone, ...(name ? { name } : {}), variables: variables.slice(0, variableCount) };
+    const extras = validateExtras(contact.extras, line);
+    return {
+      phone,
+      ...(name ? { name } : {}),
+      variables: variables.slice(0, variableCount),
+      ...(Object.keys(extras).length ? { extras } : {}),
+    };
   });
+}
+
+/** Extra CSV columns: empty keys/values are dropped (a blank cell doesn't erase a metadado). */
+function validateExtras(value: unknown, line: number): Record<string, string> {
+  if (value == null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new CampaignError(400, `Contato ${line}: colunas extras inválidas.`);
+  }
+  const entries = Object.entries(value as Record<string, unknown>)
+    .map(([key, v]) => [key.trim(), v == null ? "" : String(v).trim()] as const)
+    .filter(([key, v]) => key && v);
+  if (entries.length > MAX_EXTRAS_PER_CONTACT) {
+    throw new CampaignError(400, `O CSV pode ter no máximo ${MAX_EXTRAS_PER_CONTACT} colunas extras.`);
+  }
+  for (const [key, v] of entries) {
+    if (key.length > MAX_EXTRA_KEY_LENGTH) {
+      throw new CampaignError(400, `A coluna "${key.slice(0, 30)}..." tem mais de ${MAX_EXTRA_KEY_LENGTH} caracteres.`);
+    }
+    if (v.length > MAX_EXTRA_VALUE_LENGTH) {
+      throw new CampaignError(400, `Contato ${line}: o valor da coluna "${key}" passa de ${MAX_EXTRA_VALUE_LENGTH} caracteres.`);
+    }
+  }
+  return Object.fromEntries(entries);
 }
 
 export async function createCampaign(organizationId: string, creator: CampaignCreator, input: CreateCampaignInput) {
@@ -441,18 +481,36 @@ async function advanceStatus(externalId: string, status: "SENT" | "DELIVERED" | 
   });
 }
 
-/** message.sent: links the contact and marks the send as confirmed. */
+/**
+ * message.sent: links the contact and marks the send as confirmed. The CSV
+ * data goes into the contact: the name (if WhatsApp didn't give one) and the
+ * extra columns, merged into its extras (the CSV value wins over the stored one).
+ */
 export async function onCampaignMessageSent(message: { externalId?: string | null }, target: Target) {
   if (!isCampaignExternalId(message.externalId)) return;
   await advanceStatus(message.externalId, "SENT", target.id);
 
-  // The contact's name from the CSV, if WhatsApp didn't give one.
-  if (!target.name) {
-    const campaignTarget = await prisma.campaignTarget.findUnique({ where: { messageId: message.externalId } });
-    if (campaignTarget?.name) {
-      await prisma.target.update({ where: { id: target.id }, data: { name: campaignTarget.name } });
-    }
-  }
+  const campaignTarget = await prisma.campaignTarget.findUnique({ where: { messageId: message.externalId } });
+  if (!campaignTarget) return;
+
+  const csvExtras = parseExtras(campaignTarget.extras) ?? {};
+  const name = !hasRealName(target.name) && campaignTarget.name ? campaignTarget.name : undefined;
+  if (!name && Object.keys(csvExtras).length === 0) return;
+
+  await prisma.$transaction(async (tx) => {
+    // Re-read inside the transaction so a metadado saved meanwhile isn't lost.
+    const current = await tx.target.findUnique({ where: { id: target.id } });
+    if (!current) return;
+    await tx.target.update({
+      where: { id: target.id },
+      data: {
+        ...(name ? { name } : {}),
+        ...(Object.keys(csvExtras).length
+          ? { extras: { ...extrasOf(current), ...csvExtras } as Prisma.InputJsonValue }
+          : {}),
+      },
+    });
+  });
 }
 
 /** message.ack: delivered / read. */

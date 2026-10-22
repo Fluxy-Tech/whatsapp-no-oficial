@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, MessagesSquare, SendHorizontal } from "lucide-react";
+import { ArrowLeft, Bot, MessagesSquare, Pause, Play, SendHorizontal } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatPhone, initials } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
@@ -46,6 +46,10 @@ export function ChatPanel({ chatId, contactLabel, onBack }: ChatPanelProps) {
   const [loading, setLoading] = useState(false);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  // AI agent on/off for this contact; null = unknown (contact not saved yet).
+  const [agentActive, setAgentActive] = useState<boolean | null>(null);
+  const [togglingAgent, setTogglingAgent] = useState(false);
+  const [agentError, setAgentError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   // Each new message reloads the history; only the latest request may update
   // the screen, or a slower older response would bring back an outdated list.
@@ -85,8 +89,52 @@ export function ChatPanel({ chatId, contactLabel, onBack }: ChatPanelProps) {
   }, [socket, chatId]);
 
   useEffect(() => {
+    setAgentActive(null);
+    setAgentError(null);
+    if (!chatId) return;
+    let cancelled = false;
+    api<{ agentActive: boolean }>(`/api/whatsapp/contacts/${encodeURIComponent(chatId)}`)
+      .then((contact) => {
+        if (!cancelled) setAgentActive(contact.agentActive);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [chatId]);
+
+  // Paused/resumed here, in the lead screen or by another attendant.
+  useEffect(() => {
+    function onContactUpdated({ contact }: { contact: { chatId: string; agentActive: boolean } }) {
+      if (chatId && contact.chatId === chatId) setAgentActive(contact.agentActive);
+    }
+
+    socket.on("whatsapp:contact-updated", onContactUpdated);
+    return () => {
+      socket.off("whatsapp:contact-updated", onContactUpdated);
+    };
+  }, [socket, chatId]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  async function handleToggleAgent() {
+    if (!chatId || agentActive === null) return;
+    setTogglingAgent(true);
+    setAgentError(null);
+    try {
+      const contact = await api<{ agentActive: boolean }>(`/api/whatsapp/contacts/${encodeURIComponent(chatId)}/agent`, {
+        method: "PUT",
+        body: JSON.stringify({ agentActive: !agentActive }),
+      });
+      setAgentActive(contact.agentActive);
+    } catch (err) {
+      setAgentError((err as Error).message);
+    } finally {
+      setTogglingAgent(false);
+    }
+  }
 
   async function handleSend(event: React.FormEvent) {
     event.preventDefault();
@@ -137,7 +185,38 @@ export function ChatPanel({ chatId, contactLabel, onBack }: ChatPanelProps) {
           <p className="truncate font-semibold">{label}</p>
           <p className="truncate text-xs text-muted-foreground">{formatPhone(chatId.split("@")[0]) || chatId}</p>
         </div>
+        {agentActive !== null && (
+          <Button
+            variant={agentActive ? "outline" : "default"}
+            size="sm"
+            className="ml-auto shrink-0 gap-2"
+            onClick={handleToggleAgent}
+            disabled={togglingAgent}
+            title={agentActive ? "O agente para de responder só este contato" : "O agente volta a responder este contato"}
+          >
+            {togglingAgent ? (
+              <Spinner className="size-4" />
+            ) : agentActive ? (
+              <Pause className="h-4 w-4" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+            <span className="hidden sm:inline">{agentActive ? "Pausar agente" : "Retomar agente"}</span>
+          </Button>
+        )}
       </div>
+
+      {(agentActive === false || agentError) && (
+        <div
+          className={cn(
+            "flex shrink-0 items-center gap-2 border-b border-border/70 px-4 py-2 text-xs",
+            agentError ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground",
+          )}
+        >
+          <Bot className="h-4 w-4 shrink-0" />
+          {agentError ?? "Agente pausado neste contato: as respostas são manuais até você retomar."}
+        </div>
+      )}
 
       <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto bg-muted/40 px-4 py-5 sm:px-8">
         {loading && (

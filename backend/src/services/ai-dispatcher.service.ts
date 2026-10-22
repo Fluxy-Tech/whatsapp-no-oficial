@@ -6,13 +6,14 @@ import type { Target } from "@prisma/client";
 import type { WorkerMessage } from "../lib/worker-client";
 import { canAnswer } from "./agent.service";
 import { imageRulesOf } from "./image-rules";
-import { extrasOf } from "./target.service";
+import { CONTACT_NAME_METADADO, extrasOf, hasRealName } from "./target.service";
 
 // People often split one thought into several WhatsApp messages. Like a person
 // reading, we wait until the contact stays quiet for the company's
 // messageWaitSeconds (each new message restarts the wait) and send everything
 // to the agent together, so it answers once instead of once per message.
 const DEFAULT_WAIT_SECONDS = 20;
+const CONTACT_NAME_DESCRICAO = "Nome do contato (como ele quer ser chamado).";
 
 async function messageWaitMs(organizationId: string) {
   const organization = await prisma.organization.findUnique({
@@ -93,6 +94,22 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
   const agent = organization?.agent;
   if (!agent || !canAnswer(agent)) return;
 
+  // Campaign messages the agent hasn't seen yet: they go into its history
+  // (as messages it sent) before this turn, so it knows what it's answering.
+  const campaignMessages = await prisma.campaignTarget.findMany({
+    where: {
+      targetId: contact.id,
+      agentSyncedAt: null,
+      status: { in: ["SENT", "DELIVERED", "READ"] },
+      text: { not: null },
+    },
+    include: { campaign: { select: { name: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+
+  // Contact's name: the saved one or, if not set yet, the WhatsApp profile name.
+  const contactName = [contact.name, contact.pushname].find(hasRealName) ?? null;
+
   const jobId = randomUUID();
   await publish(
     agentReplyQueue(agent.nameQueue),
@@ -111,12 +128,19 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
         tokenOpenAi: decryptSecret(agent.tokenOpenAi),
         tokenAdk: decryptSecret(agent.tokenAdk),
         tokenJev: decryptSecret(agent.tokenJev),
-        metadados: agent.metadados.map((m) => ({
-          name: m.name,
-          descricao: m.descricao,
-          kind: m.kind,
-          imageRules: imageRulesOf(m.imageRules),
-        })),
+        metadados: [
+          // Special "Nome" metadado: the agent collects it like any other and
+          // the backend saves it in Target.name (routes/internal.ts).
+          ...(agent.requireContactName && !hasRealName(contactName)
+            ? [{ name: CONTACT_NAME_METADADO, descricao: CONTACT_NAME_DESCRICAO, kind: "text", imageRules: [] }]
+            : []),
+          ...agent.metadados.map((m) => ({
+            name: m.name,
+            descricao: m.descricao,
+            kind: m.kind,
+            imageRules: imageRulesOf(m.imageRules),
+          })),
+        ],
         documents: agent.documents,
         resetKeywords: agent.resetKeywords,
         resetMessage: agent.resetMessage,
@@ -135,13 +159,27 @@ async function dispatch(organizationId: string, conversation: PendingConversatio
         id: contact.id,
         chatId: contact.chatId,
         number: contact.number,
-        name: contact.name ?? contact.pushname,
+        name: contactName,
         extras: extrasOf(contact),
       },
       messages,
+      campaignMessages: campaignMessages.map((send) => ({
+        id: send.id,
+        campaign: send.campaign.name,
+        text: send.text,
+        sentAt: send.createdAt.toISOString(),
+      })),
     },
     jobId,
   );
+
+  // Redelivered jobs are fine: the worker skips sends already in the session.
+  if (campaignMessages.length) {
+    await prisma.campaignTarget.updateMany({
+      where: { id: { in: campaignMessages.map((send) => send.id) } },
+      data: { agentSyncedAt: new Date() },
+    });
+  }
 }
 
 /** Called for every message.received webhook from worker-whatsapp. */

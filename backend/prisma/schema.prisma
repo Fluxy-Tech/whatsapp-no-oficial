@@ -342,6 +342,11 @@ model Agent {
   timeMedium              Int          @default(10)
   timeLarge               Int          @default(15)
 
+  // Special "Nome" metadado: the contact's own name (Target.name). When on,
+  // the agent asks for it if the contact has no name yet (the WhatsApp name
+  // counts) and what it collects is saved in Target.name, not in extras.
+  requireContactName      Boolean      @default(false)
+
   // Kanban automation. A stage implies its pipeline (esteira).
   // leadOnFirstMessage: creates the lead card in leadStage on the contact's first message.
   leadOnFirstMessage Boolean        @default(false)
@@ -505,6 +510,12 @@ model CalendarEvent {
   source         String       @default("manual")
   // "scheduled" | "canceled". Canceled events free the slot.
   status         String       @default("scheduled")
+  // Reminder sent to the lead on WhatsApp reminderMinutesBefore minutes before
+  // startsAt (both set = enabled). reminderSentAt marks it as sent; it's
+  // cleared when the time or the advance changes, so the reminder goes again.
+  reminderMessage       String?
+  reminderMinutesBefore Int?
+  reminderSentAt        DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -652,7 +663,7 @@ model CampaignPendingContact {
   campaignId String
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   position   Int
-  // { phone, name?, variables: string[] }
+  // { phone, name?, variables: string[], extras?: { [column]: value } }
   contact    Json
   createdAt  DateTime @default(now())
 
@@ -678,12 +689,19 @@ model CampaignTarget {
   messageId  String?  @unique
   // Values of {{1}}, {{2}}... for this contact.
   variables  Json     @default("[]")
+  // Extra CSV columns ({ column: value }), merged into the contact's extras
+  // when the send is confirmed.
+  extras     Json     @default("{}")
   // Message actually sent (variables already replaced).
   text       String?
 
   // First reply of the contact after this send.
   respondedCampaign Boolean @default(false)
   campaignResponse  String?
+
+  // When the message went to the AI agent's history (session) of the contact.
+  // null = not yet: it goes with the next conversation sent to the agent.
+  agentSyncedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
